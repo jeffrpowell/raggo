@@ -1,0 +1,57 @@
+{
+	"name": "Raggo Go Development",
+	"image": "mcr.microsoft.com/devcontainers/go:1.25-bookworm",
+	
+	"features": {
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
+		"ghcr.io/devcontainers/features/common-utils:2": {
+			"installZsh": true,
+			"installOhMyZsh": true,
+			"upgradePackages": true
+		}
+	},
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"golang.go",
+				"ms-azuretools.vscode-docker",
+				"eamodio.gitlens",
+				"tamasfe.even-better-toml"
+			],
+			"settings": {
+				"go.toolsManagement.checkForUpdates": "local",
+				"go.useLanguageServer": true,
+				"go.lintTool": "golangci-lint",
+				"go.lintOnSave": "workspace",
+				"editor.formatOnSave": true,
+				"[go]": {
+					"editor.defaultFormatter": "golang.go",
+					"editor.codeActionsOnSave": {
+						"source.organizeImports": "explicit"
+					}
+				}
+			}
+		}
+	},
+
+	"forwardPorts": [6333, 6334],
+	"portsAttributes": {
+		"6333": {
+			"label": "Qdrant HTTP",
+			"onAutoForward": "notify"
+		},
+		"6334": {
+			"label": "Qdrant gRPC",
+			"onAutoForward": "notify"
+		}
+	},
+
+	"postCreateCommand": "make install-deps && make build",
+
+	"remoteUser": "vscode",
+	
+	"mounts": [
+		"source=${localWorkspaceFolder}/data,target=${containerWorkspaceFolder}/data,type=bind,consistency=cached"
+	]
+}

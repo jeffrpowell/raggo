@@ -1,0 +1,37 @@
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Data directories (but keep structure)
+data/podcast/raw/*
+data/podcast/manifests/*
+data/podcast/audio/*
+data/podcast/transcripts/*
+data/podcast/chunks/*
+data/podcast/embeddings/*
+data/podcast/index/*
+
+data/text/
+data/filesystem/
+
+!data/**/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
