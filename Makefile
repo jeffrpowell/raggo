@@ -1,4 +1,4 @@
-.PHONY: podcast text filesystem build install-deps clean help
+.PHONY: podcast documents text filesystem build install-deps clean help
 .DEFAULT_GOAL := help
 
 BIN_DIR := bin
@@ -7,9 +7,10 @@ help:
 	@echo "Raggo: Deterministic RAG Ingestion Pipeline"
 	@echo ""
 	@echo "Pipelines:"
-	@echo "  make podcast FEED_URL=<url>  - Run podcast ingestion pipeline"
-	@echo "  make text                    - Run text ingestion pipeline (future)"
-	@echo "  make filesystem              - Run filesystem pipeline (future)"
+	@echo "  make podcast FEED_URL=<url>   - Run podcast ingestion pipeline"
+	@echo "  make documents ROOT_PATH=<p>  - Run document ingestion pipeline"
+	@echo "  make text                     - Run text ingestion pipeline (future)"
+	@echo "  make filesystem               - Run filesystem pipeline (future)"
 	@echo ""
 	@echo "Development:"
 	@echo "  make build                   - Build all binaries"
@@ -20,6 +21,9 @@ help:
 
 podcast:
 	$(MAKE) -C pipelines/podcast
+
+documents:
+	$(MAKE) -C pipelines/documents
 
 text:
 	@echo "Text pipeline not yet implemented"
@@ -35,7 +39,12 @@ build: $(BIN_DIR)/raggo-rss-podcast \
        $(BIN_DIR)/raggo-normalize-podcast \
        $(BIN_DIR)/raggo-chunk-podcast \
        $(BIN_DIR)/raggo-embed-podcast \
-       $(BIN_DIR)/raggo-index-podcast
+       $(BIN_DIR)/raggo-index-podcast \
+       $(BIN_DIR)/raggo-scan-documents \
+       $(BIN_DIR)/raggo-extract-text \
+       $(BIN_DIR)/raggo-chunk-text \
+       $(BIN_DIR)/raggo-embed-text \
+       $(BIN_DIR)/raggo-index-documents
 
 $(BIN_DIR)/%: cmd/%/main.go pkg/**/*.go
 	@mkdir -p $(BIN_DIR)
@@ -48,6 +57,7 @@ install-deps:
 clean:
 	rm -rf data/*
 	$(MAKE) -C pipelines/podcast clean 2>/dev/null || true
+	$(MAKE) -C pipelines/documents clean 2>/dev/null || true
 
 clean-all: clean
 	rm -rf $(BIN_DIR)

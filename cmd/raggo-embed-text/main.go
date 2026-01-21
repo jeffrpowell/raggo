@@ -1,0 +1,161 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/jeffrpowell/raggo/pkg/logging"
+	"github.com/jeffrpowell/raggo/pkg/schema"
+	"github.com/jeffrpowell/raggo/pkg/storage"
+)
+
+type EmbedRequest struct {
+	Text  string `json:"text"`
+	Model string `json:"model"`
+}
+
+type EmbedResponse struct {
+	Embedding []float32 `json:"embedding"`
+	Model     string    `json:"model"`
+	Version   string    `json:"version"`
+}
+
+func main() {
+	var (
+		documentID      string
+		chunkDir        string
+		embeddingDir    string
+		embedEndpoint   string
+		model           string
+		modelVersion    string
+	)
+
+	flag.StringVar(&documentID, "document-id", "", "Document ID")
+	flag.StringVar(&chunkDir, "chunk-dir", "data/documents/chunks", "Directory for chunks")
+	flag.StringVar(&embeddingDir, "embedding-dir", "data/documents/embeddings", "Directory for embeddings")
+	flag.StringVar(&embedEndpoint, "embed-endpoint", "", "Embedding service HTTP endpoint (optional)")
+	flag.StringVar(&model, "model", "text-embedding-3-small", "Embedding model name")
+	flag.StringVar(&modelVersion, "model-version", "v1", "Embedding model version")
+	flag.Parse()
+
+	log := logging.New("raggo-embed-text")
+
+	if documentID == "" {
+		log.Fatal("document-id is required")
+	}
+
+	if err := run(log, documentID, chunkDir, embeddingDir, embedEndpoint, model, modelVersion); err != nil {
+		log.Fatal("Failed: %v", err)
+	}
+}
+
+func run(log *logging.Logger, documentID, chunkDir, embeddingDir, embedEndpoint, model, modelVersion string) error {
+	chunkPath := filepath.Join(chunkDir, fmt.Sprintf("%s.jsonl", documentID))
+	embeddingPath := filepath.Join(embeddingDir, fmt.Sprintf("%s.jsonl", documentID))
+
+	if storage.MarkerExists(embeddingPath) {
+		log.Info("Embeddings already exist: %s", embeddingPath)
+		return nil
+	}
+
+	log.Info("Loading chunks: %s", chunkPath)
+
+	var chunks []schema.TextChunk
+	if err := storage.ReadJSONL(chunkPath, func(line []byte) error {
+		var chunk schema.TextChunk
+		if err := json.Unmarshal(line, &chunk); err != nil {
+			return err
+		}
+		chunks = append(chunks, chunk)
+		return nil
+	}); err != nil {
+		return fmt.Errorf("read chunks: %w", err)
+	}
+
+	log.Info("Generating embeddings for %d chunks", len(chunks))
+
+	if err := os.Remove(embeddingPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove old embeddings: %w", err)
+	}
+
+	for i, chunk := range chunks {
+		var vector []float32
+		var err error
+
+		if embedEndpoint != "" {
+			vector, err = generateEmbeddingViaHTTP(embedEndpoint, chunk.Text, model)
+			if err != nil {
+				return fmt.Errorf("generate embedding for chunk %d: %w", i, err)
+			}
+		} else {
+			log.Warn("No embedding endpoint configured, generating placeholder")
+			vector = generatePlaceholderEmbedding()
+		}
+
+		embedding := schema.TextEmbedding{
+			ChunkID:      chunk.ChunkID,
+			DocumentID:   chunk.DocumentID,
+			ChunkHash:    chunk.TextHash,
+			Model:        model,
+			ModelVersion: modelVersion,
+			Vector:       vector,
+			Dimension:    len(vector),
+			GeneratedAt:  time.Now(),
+		}
+
+		if err := storage.AppendJSONL(embeddingPath, embedding); err != nil {
+			return fmt.Errorf("append embedding: %w", err)
+		}
+
+		if (i+1)%10 == 0 {
+			log.Info("Processed %d/%d chunks", i+1, len(chunks))
+		}
+	}
+
+	log.Info("Wrote %d embeddings to: %s", len(chunks), embeddingPath)
+	return nil
+}
+
+func generateEmbeddingViaHTTP(endpoint, text, model string) ([]float32, error) {
+	reqBody := EmbedRequest{
+		Text:  text,
+		Model: model,
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(body))
+	}
+
+	var embedResp EmbedResponse
+	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
+		return nil, err
+	}
+
+	return embedResp.Embedding, nil
+}
+
+func generatePlaceholderEmbedding() []float32 {
+	vec := make([]float32, 384)
+	for i := range vec {
+		vec[i] = 0.1
+	}
+	return vec
+}
