@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/jeffrpowell/raggo/pkg/config"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
 	"github.com/jeffrpowell/raggo/pkg/storage"
@@ -29,6 +30,8 @@ type EmbedResponse struct {
 
 func main() {
 	var (
+		configPath      string
+		corpusID        string
 		documentID      string
 		chunkDir        string
 		embeddingDir    string
@@ -37,6 +40,8 @@ func main() {
 		modelVersion    string
 	)
 
+	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
+	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&documentID, "document-id", "", "Document ID")
 	flag.StringVar(&chunkDir, "chunk-dir", "data/documents/chunks", "Directory for chunks")
 	flag.StringVar(&embeddingDir, "embedding-dir", "data/documents/embeddings", "Directory for embeddings")
@@ -46,6 +51,19 @@ func main() {
 	flag.Parse()
 
 	log := logging.New("raggo-embed-text")
+
+	var cfg *config.Config
+	if configPath != "" {
+		var err error
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			log.Fatal("Failed to load config: %v", err)
+		}
+	}
+
+	chunkDir = config.ResolveDocumentsChunksDir(cfg, corpusID, chunkDir)
+	embeddingDir = config.ResolveDocumentsEmbeddingsDir(cfg, corpusID, embeddingDir)
+	embedEndpoint = config.ResolveEmbedEndpoint(cfg, embedEndpoint)
 
 	if documentID == "" {
 		log.Fatal("document-id is required")

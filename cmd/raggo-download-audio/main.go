@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jeffrpowell/raggo/pkg/concurrency"
+	"github.com/jeffrpowell/raggo/pkg/config"
 	"github.com/jeffrpowell/raggo/pkg/hashing"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
@@ -19,17 +20,32 @@ import (
 
 func main() {
 	var (
+		configPath   string
+		corpusID     string
 		manifestPath string
 		audioDir     string
 		workers      int
 	)
 
+	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
+	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&manifestPath, "manifest", "", "Path to episode manifest JSONL file")
 	flag.StringVar(&audioDir, "audio-dir", "data/audio", "Directory for audio files")
 	flag.IntVar(&workers, "workers", 4, "Number of concurrent downloads")
 	flag.Parse()
 
 	log := logging.New("raggo-download-audio")
+
+	var cfg *config.Config
+	if configPath != "" {
+		var err error
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			log.Fatal("Failed to load config: %v", err)
+		}
+	}
+
+	audioDir = config.ResolveAudioDir(cfg, corpusID, audioDir)
 
 	if manifestPath == "" {
 		log.Fatal("manifest is required")

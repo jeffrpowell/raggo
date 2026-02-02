@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jeffrpowell/raggo/pkg/config"
 	"github.com/jeffrpowell/raggo/pkg/hashing"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
@@ -21,15 +22,30 @@ var (
 
 func main() {
 	var (
+		configPath    string
+		corpusID      string
 		episodeID     string
 		transcriptDir string
 	)
 
+	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
+	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&episodeID, "episode-id", "", "Episode ID")
 	flag.StringVar(&transcriptDir, "transcript-dir", "data/transcripts", "Directory for transcripts")
 	flag.Parse()
 
 	log := logging.New("raggo-normalize-podcast")
+
+	var cfg *config.Config
+	if configPath != "" {
+		var err error
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			log.Fatal("Failed to load config: %v", err)
+		}
+	}
+
+	transcriptDir = config.ResolveTranscriptsDir(cfg, corpusID, transcriptDir)
 
 	if episodeID == "" {
 		log.Fatal("episode-id is required")

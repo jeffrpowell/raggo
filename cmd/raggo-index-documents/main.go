@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jeffrpowell/raggo/pkg/config"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
 	"github.com/jeffrpowell/raggo/pkg/storage"
@@ -18,6 +19,8 @@ import (
 
 func main() {
 	var (
+		configPath   string
+		corpusID     string
 		documentID   string
 		manifestDir  string
 		chunkDir     string
@@ -30,6 +33,8 @@ func main() {
 		sourceType   string
 	)
 
+	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
+	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&documentID, "document-id", "", "Document ID")
 	flag.StringVar(&manifestDir, "manifest-dir", "data/manifests", "Directory for manifests")
 	flag.StringVar(&chunkDir, "chunk-dir", "data/documents/chunks", "Directory for chunks")
@@ -43,6 +48,22 @@ func main() {
 	flag.Parse()
 
 	log := logging.New("raggo-index-documents")
+
+	var cfg *config.Config
+	if configPath != "" {
+		var err error
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			log.Fatal("Failed to load config: %v", err)
+		}
+	}
+
+	manifestDir = config.ResolveDocumentsTextDir(cfg, corpusID, manifestDir)
+	chunkDir = config.ResolveDocumentsChunksDir(cfg, corpusID, chunkDir)
+	embeddingDir = config.ResolveDocumentsEmbeddingsDir(cfg, corpusID, embeddingDir)
+	indexDir = config.ResolveDocumentsIndexDir(cfg, corpusID, indexDir)
+	qdrantHost = config.ResolveQdrantHost(cfg, qdrantHost)
+	qdrantPort = config.ResolveQdrantPort(cfg, qdrantPort)
 
 	if documentID == "" {
 		log.Fatal("document-id is required")

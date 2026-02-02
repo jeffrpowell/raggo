@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/jeffrpowell/raggo/pkg/config"
 	"github.com/jeffrpowell/raggo/pkg/hashing"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
@@ -15,6 +16,8 @@ import (
 
 func main() {
 	var (
+		configPath     string
+		corpusID       string
 		episodeID      string
 		transcriptDir  string
 		chunkDir       string
@@ -22,6 +25,8 @@ func main() {
 		overlapSeconds float64
 	)
 
+	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
+	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&episodeID, "episode-id", "", "Episode ID")
 	flag.StringVar(&transcriptDir, "transcript-dir", "data/transcripts", "Directory for transcripts")
 	flag.StringVar(&chunkDir, "chunk-dir", "data/chunks", "Directory for chunks")
@@ -30,6 +35,18 @@ func main() {
 	flag.Parse()
 
 	log := logging.New("raggo-chunk-podcast")
+
+	var cfg *config.Config
+	if configPath != "" {
+		var err error
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			log.Fatal("Failed to load config: %v", err)
+		}
+	}
+
+	transcriptDir = config.ResolveTranscriptsDir(cfg, corpusID, transcriptDir)
+	chunkDir = config.ResolveChunksDir(cfg, corpusID, chunkDir)
 
 	if episodeID == "" {
 		log.Fatal("episode-id is required")

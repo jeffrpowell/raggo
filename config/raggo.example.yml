@@ -1,0 +1,102 @@
+storage:
+  root: /var/lib/raggo              # Base directory for all artifacts
+  retain_intermediates: false       # Set to true to keep intermediate files after indexing
+  podcast:
+    audio: ${root}/podcast/audio
+    transcripts: ${root}/podcast/transcripts
+    chunks: ${root}/podcast/chunks
+    embeddings: ${root}/podcast/embeddings
+    index: ${root}/podcast/index
+  documents:
+    sources: /mnt/documents           # Mount point for source documents
+    text: ${root}/documents/text
+    chunks: ${root}/documents/chunks
+    embeddings: ${root}/documents/embeddings
+    index: ${root}/documents/index
+
+qdrant:
+  host: qdrant                        # Qdrant server hostname
+  port: 6334                          # Qdrant gRPC port (6333 for HTTP)
+  metadata_collection: raggo_metadata # Collection for orchestrator state tracking
+
+services:
+  # Speech-to-text service for podcast transcription
+  stt_endpoint: http://stt-service:8000/transcribe
+  stt_model: whisper-1                # STT model name (optional)
+  stt_version: v1                     # STT model version (optional)
+  
+  # Embedding service for vector generation
+  embed_endpoint: http://embed-service:8001/embed
+  embed_model: text-embedding-3-small # Embedding model name (optional)
+  embed_version: v1                   # Embedding model version (optional)
+  
+  # Apache Tika for document text extraction
+  tika_endpoint: http://tika-service:9998
+  
+  # Vision API for PDF OCR (optional, for scanned PDFs)
+  vision_endpoint: ""                 # Leave empty to skip OCR
+  vision_model: gpt-4o               # Vision model for OCR (e.g., gpt-4o, gpt-4-vision-preview)
+  vision_prompt: "Extract all text from this image accurately, preserving structure and formatting."
+
+orchestrator:
+  retry_limit: 3                      # Maximum retry attempts per corpus
+  retry_delay_seconds: 60             # Delay between retry attempts
+  log_dir: /var/log/raggo            # Directory for orchestrator logs
+
+# Default chunking parameters (can be overridden per corpus)
+defaults:
+  podcast:
+    window_seconds: 60.0              # Chunk window size for podcasts (seconds)
+    overlap_seconds: 5.0              # Overlap between chunks (seconds)
+  documents:
+    chunk_size: 1000                  # Chunk size for documents (characters)
+    overlap_size: 100                 # Overlap between chunks (characters)
+
+corpora:
+  # Example: Scheduled podcast processing
+  - id: tech-podcast
+    type: podcast
+    mode: scheduled                   # Run on schedule
+    schedule: "0 */6 * * *"          # Cron format: every 6 hours
+    config:
+      feed_url: https://feeds.example.com/tech.rss
+      collection: tech-podcast        # Qdrant collection name
+      corpus: tech-podcast-v1         # Corpus identifier in metadata
+      workers: 4                      # Parallel workers for downloads
+      # Optional: Override default chunking parameters
+      # window_seconds: 120.0
+      # overlap_seconds: 10.0
+  
+  # Example: Watched document directory
+  - id: company-docs
+    type: documents
+    mode: watch                       # Monitor for changes
+    watch_interval_seconds: 300       # Check every 5 minutes
+    config:
+      root_path: /mnt/documents
+      collection: company-docs
+      corpus: company-docs-v1
+      # Optional: Override default chunking parameters
+      chunk_size: 1000
+      overlap_size: 100
+  
+  # Example: One-shot podcast processing
+  - id: initial-load
+    type: podcast
+    mode: one-shot                    # Run once and exit
+    config:
+      feed_url: https://feeds.example.com/archive.rss
+      collection: archive-podcast
+      corpus: archive-podcast-v1
+      workers: 8
+  
+  # Example: Watched podcast feed
+  - id: breaking-news
+    type: podcast
+    mode: watch                       # Monitor RSS for new episodes
+    watch_interval_seconds: 600       # Check every 10 minutes
+    config:
+      feed_url: https://feeds.example.com/news.rss
+      collection: news-podcast
+      corpus: news-podcast-v1
+      workers: 2

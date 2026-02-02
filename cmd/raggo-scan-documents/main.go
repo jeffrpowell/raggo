@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jeffrpowell/raggo/pkg/config"
 	"github.com/jeffrpowell/raggo/pkg/hashing"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
@@ -34,15 +35,31 @@ var supportedExtensions = map[string]string{
 
 func main() {
 	var (
+		configPath  string
+		corpusID    string
 		rootPath    string
 		manifestDir string
 	)
 
+	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
+	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&rootPath, "root-path", "", "Root path to scan recursively")
 	flag.StringVar(&manifestDir, "manifest-dir", "data/manifests", "Directory for manifest files")
 	flag.Parse()
 
 	log := logging.New("raggo-scan-documents")
+
+	var cfg *config.Config
+	if configPath != "" {
+		var err error
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			log.Fatal("Failed to load config: %v", err)
+		}
+	}
+
+	rootPath = config.ResolveDocumentsSourcesDir(cfg, corpusID, rootPath)
+	manifestDir = config.ResolveDocumentsTextDir(cfg, corpusID, manifestDir)
 
 	if rootPath == "" {
 		log.Fatal("root-path is required")

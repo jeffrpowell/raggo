@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jeffrpowell/raggo/pkg/config"
 	"github.com/jeffrpowell/raggo/pkg/hashing"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
@@ -21,7 +22,7 @@ const (
 	defaultVisionPrompt       = "Extract all text from this image accurately, preserving structure and formatting."
 )
 
-type config struct {
+type extractConfig struct {
 	documentID     string
 	filePath       string
 	textDir        string
@@ -32,32 +33,49 @@ type config struct {
 }
 
 func main() {
-	cfg := config{}
+	var (
+		configPath string
+		corpusID   string
+	)
+	ecfg := extractConfig{}
 
-	flag.StringVar(&cfg.documentID, "document-id", "", "Document ID")
-	flag.StringVar(&cfg.filePath, "file-path", "", "Path to document file")
-	flag.StringVar(&cfg.textDir, "text-dir", "data/documents/text", "Directory for extracted text")
-	flag.StringVar(&cfg.tikaEndpoint, "tika-endpoint", "http://localhost:9998", "Tika HTTP endpoint")
-	flag.StringVar(&cfg.visionEndpoint, "vision-endpoint", "", "OpenAI-compatible vision API endpoint")
-	flag.StringVar(&cfg.visionModel, "vision-model", "gpt-4o", "Vision model name")
-	flag.StringVar(&cfg.visionPrompt, "vision-prompt", defaultVisionPrompt, "Vision extraction prompt")
+	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
+	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
+	flag.StringVar(&ecfg.documentID, "document-id", "", "Document ID")
+	flag.StringVar(&ecfg.filePath, "file-path", "", "Path to document file")
+	flag.StringVar(&ecfg.textDir, "text-dir", "data/documents/text", "Directory for extracted text")
+	flag.StringVar(&ecfg.tikaEndpoint, "tika-endpoint", "http://localhost:9998", "Tika HTTP endpoint")
+	flag.StringVar(&ecfg.visionEndpoint, "vision-endpoint", "", "OpenAI-compatible vision API endpoint")
+	flag.StringVar(&ecfg.visionModel, "vision-model", "gpt-4o", "Vision model name")
+	flag.StringVar(&ecfg.visionPrompt, "vision-prompt", defaultVisionPrompt, "Vision extraction prompt")
 	flag.Parse()
 
 	log := logging.New("raggo-extract-text")
 
-	if cfg.documentID == "" {
+	var cfg *config.Config
+	if configPath != "" {
+		var err error
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			log.Fatal("Failed to load config: %v", err)
+		}
+	}
+
+	ecfg.textDir = config.ResolveDocumentsTextDir(cfg, corpusID, ecfg.textDir)
+
+	if ecfg.documentID == "" {
 		log.Fatal("document-id is required")
 	}
-	if cfg.filePath == "" {
+	if ecfg.filePath == "" {
 		log.Fatal("file-path is required")
 	}
 
-	if err := run(log, cfg); err != nil {
+	if err := run(log, ecfg); err != nil {
 		log.Fatal("Failed: %v", err)
 	}
 }
 
-func run(log *logging.Logger, cfg config) error {
+func run(log *logging.Logger, cfg extractConfig) error {
 	textPath := filepath.Join(cfg.textDir, fmt.Sprintf("%s.json", cfg.documentID))
 
 	if storage.MarkerExists(textPath) {
@@ -134,7 +152,7 @@ type extractionResult struct {
 	PageCount    int
 }
 
-func extractText(log *logging.Logger, cfg config, ext string) (*extractionResult, error) {
+func extractText(log *logging.Logger, cfg extractConfig, ext string) (*extractionResult, error) {
 	switch ext {
 	case ".txt", ".md":
 		data, err := os.ReadFile(cfg.filePath)
@@ -154,7 +172,7 @@ func extractText(log *logging.Logger, cfg config, ext string) (*extractionResult
 	}
 }
 
-func extractWithTika(log *logging.Logger, cfg config) (*extractionResult, error) {
+func extractWithTika(log *logging.Logger, cfg extractConfig) (*extractionResult, error) {
 	tikaClient := tika.NewClient(cfg.tikaEndpoint)
 	
 	log.Info("Attempting Tika extraction from: %s", cfg.tikaEndpoint)
@@ -208,7 +226,7 @@ func extractWithTika(log *logging.Logger, cfg config) (*extractionResult, error)
 	return result, nil
 }
 
-func shouldUseOCR(log *logging.Logger, result *extractionResult, cfg config) bool {
+func shouldUseOCR(log *logging.Logger, result *extractionResult, cfg extractConfig) bool {
 	if cfg.visionEndpoint == "" {
 		return false
 	}

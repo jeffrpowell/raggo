@@ -26,7 +26,6 @@ Raggo includes a complete VS Code devcontainer configuration for a consistent de
 4. Verify setup:
    ```bash
    go version
-   make --version
    ls bin/
    curl http://localhost:6333/collections
    ```
@@ -81,9 +80,8 @@ RUN apt-get update && apt-get -y install --no-install-recommends your-package
 
 **Prerequisites:**
 - Go 1.21+
-- GNU Make
+- Docker and Docker Compose
 - jq (for JSON processing)
-- Qdrant instance
 - Optional: STT service, Embedding service
 
 **Setup:**
@@ -91,11 +89,20 @@ RUN apt-get update && apt-get -y install --no-install-recommends your-package
 ```bash
 git clone https://github.com/jeffrpowell/raggo.git
 cd raggo
-make install-deps
-make build
+
+# Install dependencies
+go mod download
+
+# Build binaries
+go build -o bin/raggo-orchestrator ./cmd/raggo-orchestrator
+go build -o bin/raggo-rss-podcast ./cmd/raggo-rss-podcast
+# ... or build all at once
+for cmd in cmd/raggo-*; do
+  go build -o "bin/$(basename $cmd)" ./$cmd
+done
 
 # Start Qdrant
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Code Style
@@ -123,18 +130,20 @@ bin/raggo-rss-podcast -feed-url="file://test/fixtures/feed.xml" -manifest-dir="t
 ### End-to-End Tests
 
 ```bash
-# Use test feed with fixtures
-make podcast FEED_URL="file://test/fixtures/small-feed.xml"
-test -f data/podcast/index/*.done
+# Test with orchestrator and example config
+cp config/raggo.example.yml config/test.yml
+# Edit config/test.yml with test corpus
+bin/raggo-orchestrator -config config/test.yml
 ```
 
 ## Adding a New Stage
 
 1. Create new binary in `cmd/raggo-<action>-<type>/`
 2. Define schemas in `pkg/schema/`
-3. Add Makefile targets in appropriate pipeline
-4. Update documentation (README.md, ARCHITECTURE.md, EXAMPLES.md)
-5. Submit PR with test coverage
+3. Add pipeline builder in `pkg/pipeline/<type>.go`
+4. Update orchestrator to recognize new stage
+5. Update documentation (README.md, ARCHITECTURE.md, EXAMPLES.md)
+6. Submit PR with test coverage
 
 ## Design Principles
 
