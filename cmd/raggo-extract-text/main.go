@@ -12,71 +12,93 @@ import (
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
 	"github.com/jeffrpowell/raggo/pkg/storage"
+	"github.com/jeffrpowell/raggo/pkg/tika"
+	"github.com/jeffrpowell/raggo/pkg/vision"
 )
 
-func main() {
-	var (
-		documentID string
-		filePath   string
-		textDir    string
-	)
+const (
+	minCharsForGoodExtraction = 100
+	defaultVisionPrompt       = "Extract all text from this image accurately, preserving structure and formatting."
+)
 
-	flag.StringVar(&documentID, "document-id", "", "Document ID")
-	flag.StringVar(&filePath, "file-path", "", "Path to document file")
-	flag.StringVar(&textDir, "text-dir", "data/documents/text", "Directory for extracted text")
+type config struct {
+	documentID     string
+	filePath       string
+	textDir        string
+	tikaEndpoint   string
+	visionEndpoint string
+	visionModel    string
+	visionPrompt   string
+}
+
+func main() {
+	cfg := config{}
+
+	flag.StringVar(&cfg.documentID, "document-id", "", "Document ID")
+	flag.StringVar(&cfg.filePath, "file-path", "", "Path to document file")
+	flag.StringVar(&cfg.textDir, "text-dir", "data/documents/text", "Directory for extracted text")
+	flag.StringVar(&cfg.tikaEndpoint, "tika-endpoint", "http://localhost:9998", "Tika HTTP endpoint")
+	flag.StringVar(&cfg.visionEndpoint, "vision-endpoint", "", "OpenAI-compatible vision API endpoint")
+	flag.StringVar(&cfg.visionModel, "vision-model", "gpt-4o", "Vision model name")
+	flag.StringVar(&cfg.visionPrompt, "vision-prompt", defaultVisionPrompt, "Vision extraction prompt")
 	flag.Parse()
 
 	log := logging.New("raggo-extract-text")
 
-	if documentID == "" {
+	if cfg.documentID == "" {
 		log.Fatal("document-id is required")
 	}
-	if filePath == "" {
+	if cfg.filePath == "" {
 		log.Fatal("file-path is required")
 	}
 
-	if err := run(log, documentID, filePath, textDir); err != nil {
+	if err := run(log, cfg); err != nil {
 		log.Fatal("Failed: %v", err)
 	}
 }
 
-func run(log *logging.Logger, documentID, filePath, textDir string) error {
-	textPath := filepath.Join(textDir, fmt.Sprintf("%s.json", documentID))
+func run(log *logging.Logger, cfg config) error {
+	textPath := filepath.Join(cfg.textDir, fmt.Sprintf("%s.json", cfg.documentID))
 
 	if storage.MarkerExists(textPath) {
 		log.Info("Text already extracted: %s", textPath)
 		return nil
 	}
 
-	log.Info("Extracting text from: %s", filePath)
+	log.Info("Extracting text from: %s", cfg.filePath)
 
-	info, err := os.Stat(filePath)
+	info, err := os.Stat(cfg.filePath)
 	if err != nil {
 		return fmt.Errorf("stat file: %w", err)
 	}
 
-	ext := strings.ToLower(filepath.Ext(filePath))
-	text, extractor, err := extractText(filePath, ext)
+	ext := strings.ToLower(filepath.Ext(cfg.filePath))
+	
+	result, err := extractText(log, cfg, ext)
 	if err != nil {
 		return fmt.Errorf("extract text: %w", err)
 	}
 
-	contentHash, err := hashFileContent(filePath)
+	contentHash, err := hashFileContent(cfg.filePath)
 	if err != nil {
 		return fmt.Errorf("hash file: %w", err)
 	}
 
-	wordCount := countWords(text)
+	wordCount := countWords(result.Text)
 
 	extracted := schema.ExtractedText{
-		DocumentID:  documentID,
-		FilePath:    filePath,
-		ContentHash: contentHash,
-		Text:        text,
-		CharCount:   len(text),
-		WordCount:   wordCount,
-		Extractor:   extractor,
-		ExtractedAt: time.Now(),
+		DocumentID:   cfg.documentID,
+		FilePath:     cfg.filePath,
+		ContentHash:  contentHash,
+		Text:         result.Text,
+		CharCount:    len(result.Text),
+		WordCount:    wordCount,
+		Extractor:    result.Extractor,
+		ExtractedAt:  time.Now(),
+		TikaMetadata: result.TikaMetadata,
+		OCRProvider:  result.OCRProvider,
+		ImageCount:   result.ImageCount,
+		PageCount:    result.PageCount,
 		Metadata: map[string]string{
 			"file_size": fmt.Sprintf("%d", info.Size()),
 			"extension": ext,
@@ -87,64 +109,120 @@ func run(log *logging.Logger, documentID, filePath, textDir string) error {
 		return fmt.Errorf("write extracted text: %w", err)
 	}
 
-	log.Info("Extracted %d chars (%d words) to: %s", extracted.CharCount, extracted.WordCount, textPath)
+	log.Info("Extracted %d chars (%d words) using %s to: %s", 
+		extracted.CharCount, extracted.WordCount, extracted.Extractor, textPath)
+	
+	if extracted.OCRProvider != "" {
+		log.Info("OCR Provider: %s", extracted.OCRProvider)
+	}
+	if extracted.PageCount > 0 {
+		log.Info("Page Count: %d", extracted.PageCount)
+	}
+	if extracted.ImageCount > 0 {
+		log.Info("Image Count: %d", extracted.ImageCount)
+	}
+	
 	return nil
 }
 
-func extractText(filePath, ext string) (string, string, error) {
+type extractionResult struct {
+	Text         string
+	Extractor    string
+	TikaMetadata map[string]interface{}
+	OCRProvider  string
+	ImageCount   int
+	PageCount    int
+}
+
+func extractText(log *logging.Logger, cfg config, ext string) (*extractionResult, error) {
 	switch ext {
 	case ".txt", ".md":
-		data, err := os.ReadFile(filePath)
+		data, err := os.ReadFile(cfg.filePath)
 		if err != nil {
-			return "", "", err
+			return nil, err
 		}
-		return string(data), "plain", nil
+		return &extractionResult{
+			Text:      string(data),
+			Extractor: "plain",
+		}, nil
 
-	case ".doc", ".docx":
-		return extractOfficeDoc(filePath)
-
-	case ".xls", ".xlsx":
-		return extractOfficeSpreadsheet(filePath)
-
-	case ".ppt", ".pptx":
-		return extractOfficePresentation(filePath)
-
-	case ".pdf":
-		return extractPDF(filePath)
-
-	case ".rtf":
-		return extractRTF(filePath)
-
-	case ".odt", ".ods", ".odp":
-		return extractOpenDocument(filePath)
+	case ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf", ".rtf", ".odt", ".ods", ".odp":
+		return extractWithTika(log, cfg)
 
 	default:
-		return "", "", fmt.Errorf("unsupported file type: %s", ext)
+		return nil, fmt.Errorf("unsupported file type: %s", ext)
 	}
 }
 
-func extractOfficeDoc(filePath string) (string, string, error) {
-	return fmt.Sprintf("[PLACEHOLDER: Text extraction from %s]\nTo enable MS Word document extraction, install a library like 'github.com/unidoc/unioffice' or use external tools like 'docx2txt' or 'antiword'.\n\nFor now, this is a placeholder that would contain the extracted text content.", filepath.Base(filePath)), "placeholder-docx", nil
+func extractWithTika(log *logging.Logger, cfg config) (*extractionResult, error) {
+	tikaClient := tika.NewClient(cfg.tikaEndpoint)
+	
+	log.Info("Attempting Tika extraction from: %s", cfg.tikaEndpoint)
+	
+	tikaResult, err := tikaClient.ExtractText(cfg.filePath)
+	if err != nil {
+		return nil, fmt.Errorf("tika extraction failed: %w\nEnsure Tika is running at %s", err, cfg.tikaEndpoint)
+	}
+
+	result := &extractionResult{
+		Text:         strings.TrimSpace(tikaResult.Text),
+		Extractor:    "tika",
+		TikaMetadata: tikaResult.Metadata,
+		PageCount:    tika.ExtractPageCount(tikaResult.Metadata),
+		ImageCount:   tika.ExtractImageCount(tikaResult.Metadata),
+	}
+
+	log.Info("Tika extracted %d chars", len(result.Text))
+	
+	needsOCR := shouldUseOCR(log, result, cfg)
+	
+	if needsOCR {
+		log.Info("Text extraction insufficient (%d chars), attempting OCR", len(result.Text))
+		
+		ext := strings.ToLower(filepath.Ext(cfg.filePath))
+		if ext != ".pdf" {
+			log.Warn("OCR currently only supported for PDF files, skipping")
+			return result, nil
+		}
+		
+		visionClient := vision.NewClient(cfg.visionEndpoint, cfg.visionModel, cfg.visionPrompt)
+		
+		ocrText, err := visionClient.ExtractTextFromPDF(cfg.filePath)
+		if err != nil {
+			log.Warn("OCR failed: %v, falling back to Tika-only text", err)
+			return result, nil
+		}
+		
+		log.Info("OCR extracted %d chars", len(ocrText))
+		
+		if len(result.Text) > 0 {
+			result.Text = result.Text + "\n\n" + ocrText
+			result.OCRProvider = "tika+llm-vision"
+		} else {
+			result.Text = ocrText
+			result.OCRProvider = "llm-vision"
+		}
+		result.Extractor = "tika+vision-ocr"
+	}
+
+	return result, nil
 }
 
-func extractOfficeSpreadsheet(filePath string) (string, string, error) {
-	return fmt.Sprintf("[PLACEHOLDER: Text extraction from %s]\nTo enable MS Excel extraction, install 'github.com/xuri/excelize' or use external tools.\n\nFor now, this is a placeholder that would contain the extracted spreadsheet content.", filepath.Base(filePath)), "placeholder-xlsx", nil
-}
-
-func extractOfficePresentation(filePath string) (string, string, error) {
-	return fmt.Sprintf("[PLACEHOLDER: Text extraction from %s]\nTo enable MS PowerPoint extraction, install a library like 'github.com/unidoc/unioffice' or use external tools.\n\nFor now, this is a placeholder that would contain the extracted presentation text.", filepath.Base(filePath)), "placeholder-pptx", nil
-}
-
-func extractPDF(filePath string) (string, string, error) {
-	return fmt.Sprintf("[PLACEHOLDER: Text extraction from %s]\nTo enable PDF extraction, install 'github.com/ledongthuc/pdf' or use external tools like 'pdftotext'.\n\nFor now, this is a placeholder that would contain the extracted PDF text.", filepath.Base(filePath)), "placeholder-pdf", nil
-}
-
-func extractRTF(filePath string) (string, string, error) {
-	return fmt.Sprintf("[PLACEHOLDER: Text extraction from %s]\nTo enable RTF extraction, install an RTF parser or use external tools.\n\nFor now, this is a placeholder that would contain the extracted RTF text.", filepath.Base(filePath)), "placeholder-rtf", nil
-}
-
-func extractOpenDocument(filePath string) (string, string, error) {
-	return fmt.Sprintf("[PLACEHOLDER: Text extraction from %s]\nTo enable OpenDocument extraction, install an ODT/ODS/ODP parser or use external tools.\n\nFor now, this is a placeholder that would contain the extracted OpenDocument text.", filepath.Base(filePath)), "placeholder-odf", nil
+func shouldUseOCR(log *logging.Logger, result *extractionResult, cfg config) bool {
+	if cfg.visionEndpoint == "" {
+		return false
+	}
+	
+	hasMinimalText := len(result.Text) < minCharsForGoodExtraction
+	hasContentToOCR := result.PageCount > 0 || result.ImageCount > 0
+	
+	if hasMinimalText && hasContentToOCR {
+		log.Info("Poor extraction detected: %d chars, %d pages, %d images", 
+			len(result.Text), result.PageCount, result.ImageCount)
+		return true
+	}
+	
+	return false
 }
 
 func hashFileContent(filePath string) (string, error) {

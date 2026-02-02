@@ -114,7 +114,7 @@ func run(log *logging.Logger, feedURL, rawDir, manifestDir string) error {
 	return nil
 }
 
-func downloadRawFeed(url, path string) error {
+func downloadRawFeed(url, path string) (err error) {
 	fp := gofeed.NewParser()
 	
 	resp, err := fp.Client.Get(url)
@@ -131,7 +131,11 @@ func downloadRawFeed(url, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	_, err = io.Copy(f, resp.Body)
 	return err

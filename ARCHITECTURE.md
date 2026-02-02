@@ -1,455 +1,237 @@
 # Raggo Architecture
 
-## Design Principles
+## Overview
 
-### 1. Artifact-First Design
+Raggo is a deterministic, artifact-first RAG ingestion pipeline built from composable CLI tools orchestrated by GNU Make. This document is designed to help LLM agents and developers quickly understand the project's philosophy, structure, and design decisions.
 
-Every pipeline stage operates on the principle of **consuming files** and **producing files**. No stage maintains internal state or relies on in-memory communication.
+## Core Philosophy
 
-**Benefits**:
-- **Inspectability**: `cat`, `jq`, `grep` work on all intermediate outputs
-- **Debuggability**: Examine exact inputs/outputs at each stage
-- **Reproducibility**: Same input files → same output files
-- **Disaster recovery**: No hidden database state to corrupt
+### Why This Exists
 
-**Example**:
-```bash
-# Inspect what episodes were discovered
-cat data/manifests/<feed_hash>.jsonl | jq .title
+Most RAG ingestion pipelines are black boxes - hidden state, implicit dependencies, difficult to debug. Raggo takes the opposite approach: everything is explicit, inspectable, and reproducible.
 
-# Check a specific chunk's content
-cat data/chunks/<episode_id>.jsonl | jq -r 'select(.chunk_index == 5) | .text'
+### Key Principles
 
-# Verify embedding dimensions
-cat data/embeddings/<episode_id>.jsonl | jq .dimension | head -1
-```
+1. **Artifact-first**: Every pipeline stage consumes files and produces files. No internal state, no hidden databases.
+2. **Stage isolation**: Each CLI binary is self-contained and stateless. Swap implementations without breaking the pipeline.
+3. **Makefile orchestration**: GNU Make defines the DAG explicitly. Timestamps handle caching automatically.
+4. **Inspectability**: All intermediate outputs are human-readable JSON/JSONL. Use `cat`, `jq`, `grep`.
+5. **Re-runnability**: Delete an artifact and re-run `make` to regenerate it deterministically.
 
-### 2. Stage Isolation
+### Design Philosophy: Why These Choices?
 
-Each CLI binary is a **standalone program** with zero knowledge of other stages.
+**Why Make?**
+- Declarative DAG: Dependencies are explicit in the Makefile
+- Timestamp-based: Automatically detects stale artifacts
+- Parallel execution: Built-in `-j` flag
+- Universal: Available on all Unix systems
+- Inspectable: Pipeline logic is readable and version-controlled
 
-**Benefits**:
-- **Testability**: Run and test each stage independently
-- **Composability**: Reuse stages across different pipelines
-- **Replaceability**: Swap out implementations without breaking others
-- **Resource isolation**: Memory-intensive STT doesn't affect lightweight chunking
+**Why Separate Binaries?**
+- Composability: Test each stage independently
+- Replaceability: Swap out STT engine without touching other stages
+- Debuggability: Run a single stage with custom flags
+- Resource isolation: Different stages have different resource needs
 
-**Example**:
-```bash
-# Run normalization standalone
-bin/raggo-normalize-podcast \
-  -episode-id="abc123" \
-  -transcript-dir="data/transcripts"
+**Why File-Based?**
+- Inspectability: Standard Unix tools work on all artifacts
+- Versioning: Git can track changes to artifacts
+- Disaster recovery: No hidden database state to corrupt
+- Reproducibility: Identical inputs → identical outputs
 
-# Replace STT with different implementation
-bin/my-custom-stt \
-  -episode-id="abc123" \
-  -audio-path="data/audio/abc123.mp3" \
-  -transcript-dir="data/transcripts"
-```
+**Why Go?**
+- Strong typing: Schemas catch errors at compile time
+- Explicit errors: No silent failures
+- Bounded concurrency: Worker pools prevent resource exhaustion
+- Fast iteration: Compiled binaries with no runtime dependencies
 
-### 3. Makefile Orchestration
-
-GNU Make provides the **control plane** for pipeline execution, with a **two-tier structure**:
-
-**Top-level Makefile** (minimal delegator):
-```makefile
-podcast:
-	$(MAKE) -C pipelines/podcast
-```
-
-**Pipeline-specific Makefiles** (complete DAG):
-- Located in `pipelines/<type>/Makefile`
-- Define all targets for that pipeline
-- Use fully qualified artifact paths (`../../data/podcast/...`)
-- End in a terminal `.done` target (`data/podcast/index/qdrant.done`)
-
-**Benefits**:
-- **Declarative DAG**: Dependencies are explicit, not hidden in code
-- **Automatic caching**: Make uses timestamps to skip unchanged work
-- **Parallel execution**: Built-in `-j` flag for concurrency
-- **Pipeline isolation**: Each pipeline is self-contained
-- **Universal**: No custom scheduler to debug
-- **Version controlled**: Pipeline logic is code
-
-**Example**:
-```makefile
-# In pipelines/podcast/Makefile
-all: $(INDEX_DIR)/qdrant.done
-
-$(CHUNK_DIR)/%.jsonl: $(TRANSCRIPT_DIR)/%.normalized.json
-	$(BIN_DIR)/raggo-chunk-podcast -episode-id="$*" ...
-
-$(INDEX_DIR)/qdrant.done: $(INDEX_FILES)
-	@touch $@
-```
-
-### 4. Go as Control Language
-
-Go provides the implementation language for orchestration, I/O, and concurrency.
-
-**Benefits**:
-- **Strong typing**: Schemas catch errors at compile time
-- **Explicit errors**: No silent failures
-- **Bounded concurrency**: Worker pools prevent resource exhaustion
-- **Fast iteration**: Compiled binaries with no runtime dependencies
-
-**Non-goals**:
+**What This System Does NOT Do:**
+- ❌ Real-time processing (batch-oriented by design)
+- ❌ Auto-scaling (use external orchestration if needed)
 - ❌ Native ML inference (use external APIs instead)
 - ❌ Dynamic pipeline configuration (static stages preferred)
-- ❌ Hidden abstractions (explicit is better)
+- ❌ Built-in web UI (CLI-first philosophy)
 
-## Data Flow
+## Repository Structure
 
 ```
-┌─────────────────┐
-│   RSS Feed      │
-│   (External)    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐      data/raw/*.xml
-│  raggo-rss-     │      data/raw/*.json
-│  podcast        │───►  data/manifests/*.jsonl
-└────────┬────────┘      
-         │
-         ▼
-┌─────────────────┐      data/audio/*.mp3
-│  raggo-download-│───►  data/audio/*.json
-│  audio          │      
-└────────┬────────┘      
-         │
-         ▼
-┌─────────────────┐      
-│  External STT   │      
-│  Service        │      
-└────────┬────────┘      
-         │
-         ▼
-┌─────────────────┐      data/transcripts/*.json
-│  raggo-stt-     │───►  
-│  audio          │      
-└────────┬────────┘      
-         │
-         ▼
-┌─────────────────┐      data/transcripts/*.normalized.json
-│  raggo-         │───►  
-│  normalize-     │      
-│  podcast        │      
-└────────┬────────┘      
-         │
-         ▼
-┌─────────────────┐      data/chunks/*.jsonl
-│  raggo-chunk-   │───►  
-│  podcast        │      
-└────────┬────────┘      
-         │
-         ▼
-┌─────────────────┐      
-│  External       │      
-│  Embedding      │      
-│  Service        │      
-└────────┬────────┘      
-         │
-         ▼
-┌─────────────────┐      data/embeddings/*.jsonl
-│  raggo-embed-   │───►  
-│  podcast        │      
-└────────┬────────┘      
-         │
-         ▼
-┌─────────────────┐      data/index/*.done
-│  raggo-index-   │───►  
-│  podcast        │      Qdrant
-└────────┬────────┘      Vector DB
-         │
-         ▼
-    ┌────────┐
-    │ Qdrant │
-    │ Index  │
-    └────────┘
+raggo/
+├── cmd/                          # CLI binaries (one per pipeline stage)
+│   ├── raggo-rss-podcast/        # RSS feed ingestion
+│   ├── raggo-download-audio/     # Audio download
+│   ├── raggo-stt-audio/          # Speech-to-text transcription
+│   ├── raggo-normalize-podcast/  # Podcast transcript normalization
+│   ├── raggo-chunk-podcast/      # Podcast time-based chunking
+│   ├── raggo-embed-podcast/      # Podcast embedding generation
+│   ├── raggo-index-podcast/      # Podcast Qdrant indexing
+│   ├── raggo-scan-documents/     # Document discovery/scanning
+│   ├── raggo-extract-text/       # Text extraction from documents
+│   ├── raggo-chunk-text/         # Generic text chunking
+│   ├── raggo-embed-text/         # Generic text embedding
+│   └── raggo-index-documents/    # Document Qdrant indexing
+│
+├── pkg/                          # Shared libraries
+│   ├── schema/                   # Data schemas (podcast.go, document.go)
+│   ├── storage/                  # File I/O utilities
+│   ├── hashing/                  # Content hashing
+│   ├── concurrency/              # Worker pool
+│   ├── logging/                  # Structured logging
+│   ├── tika/                     # Apache Tika client for text extraction
+│   └── vision/                   # Vision API client for image processing
+│
+├── pipelines/                    # Pipeline-specific orchestration
+│   ├── podcast/Makefile          # Podcast pipeline DAG
+│   └── documents/Makefile        # Documents pipeline DAG
+│
+├── data/                         # Pipeline artifacts (gitignored)
+│   ├── podcast/
+│   │   ├── raw/                  # Raw RSS feed XML
+│   │   ├── manifests/            # Episode manifests (JSONL)
+│   │   ├── audio/                # Downloaded audio files
+│   │   ├── transcripts/          # Raw and normalized transcripts
+│   │   ├── chunks/               # Text chunks (JSONL)
+│   │   ├── embeddings/           # Vector embeddings (JSONL)
+│   │   └── index/                # Index completion markers
+│   │
+│   └── documents/
+│       ├── sources/              # Source document files
+│       ├── extracted/            # Extracted text
+│       ├── chunks/               # Text chunks (JSONL)
+│       ├── embeddings/           # Vector embeddings (JSONL)
+│       └── index/                # Index completion markers
+│
+├── scripts/                      # Helper utilities
+│   ├── verify-pipeline.sh        # Check pipeline status
+│   ├── list-episodes.sh          # List all episodes
+│   └── inspect-episode.sh        # Debug specific episode
+│
+├── .devcontainer/                # VS Code devcontainer config
+└── Makefile                      # Top-level delegator
 ```
+
+### How to Navigate the Codebase
+
+**Looking for business logic?** Check `cmd/raggo-*-*/main.go` files. Each binary is self-contained.
+
+**Looking for data schemas?** Check `pkg/schema/`. All JSON structures are defined here.
+
+**Looking for pipeline DAG?** Check `pipelines/*/Makefile`. Dependencies are explicit.
+
+**Looking for example usage?** Check `EXAMPLES.md` for comprehensive examples.
+
+**Looking for development setup?** Check `CONTRIBUTING.md` for devcontainer and local setup.
+
+## Pipeline Data Flow
+
+The podcast pipeline follows a linear sequence of transformations:
+
+1. **RSS Ingestion** → Produces: `raw/*.xml`, `manifests/*.jsonl`
+2. **Audio Download** → Produces: `audio/*.mp3`
+3. **Speech-to-Text** (external service) → Produces: `transcripts/*.json`
+4. **Normalization** → Produces: `transcripts/*.normalized.json`
+5. **Chunking** → Produces: `chunks/*.jsonl`
+6. **Embedding** (external service) → Produces: `embeddings/*.jsonl`
+7. **Indexing** → Produces: `index/*.done` markers, upserts to Qdrant
+
+Each stage only knows about its input and output file locations. Dependencies are managed by Make.
 
 ## Naming Conventions
 
-### Binary Names
+**Binary Names:** `raggo-<action>-<source-type>`
 
-Format: `raggo-<action>-<source-type>`
+Examples: `raggo-rss-podcast`, `raggo-download-audio`, `raggo-stt-audio`, `raggo-normalize-podcast`
 
-- `raggo-rss-podcast` - RSS-specific ingestion
-- `raggo-download-audio` - Generic audio downloader
-- `raggo-stt-audio` - Generic audio transcription
-- `raggo-normalize-podcast` - Podcast-specific normalization
-- `raggo-chunk-podcast` - Podcast-specific chunking
-- `raggo-embed-podcast` - Podcast text embedding (reusable for other text sources)
-- `raggo-index-podcast` - Podcast indexing
+**Artifact Paths:** `data/<pipeline>/<stage>/<identifier>.<extension>`
 
-### Artifact Paths
+Examples: 
+- `data/podcast/manifests/<feed_hash>.jsonl` - Episode lists
+- `data/podcast/audio/<episode_id>.mp3` - Downloaded audio
+- `data/podcast/chunks/<episode_id>.jsonl` - Text chunks
+- `data/podcast/index/qdrant.done` - Terminal pipeline completion marker
 
-Format: `data/<pipeline>/<stage>/<identifier>.<extension>`
+## Technical Implementation Details
 
-- `data/podcast/raw/<feed_hash>.xml` - Immutable feed snapshot
-- `data/podcast/manifests/<feed_hash>.jsonl` - Line-delimited episodes
-- `data/podcast/audio/<episode_id>.mp3` - Audio file
-- `data/podcast/transcripts/<episode_id>.json` - Raw transcript
-- `data/podcast/transcripts/<episode_id>.normalized.json` - Normalized transcript
-- `data/podcast/chunks/<episode_id>.jsonl` - Chunk records
-- `data/podcast/embeddings/<episode_id>.jsonl` - Embedding records
-- `data/podcast/index/<episode_id>.done` - Per-episode completion marker
-- `data/podcast/index/qdrant.done` - **Terminal pipeline marker**
+### Concurrency Model
 
-## Concurrency Model
+The system uses two levels of parallelism:
 
-### Episode-Level Parallelism
+1. **Episode-level**: Make's `-j` flag processes multiple episodes concurrently
+2. **Within-stage**: Go worker pools handle parallel operations (downloads, API calls) with bounded concurrency
 
-Make provides **horizontal parallelism** across episodes:
+This prevents resource exhaustion while maximizing throughput.
 
-```bash
-# Process 4 episodes concurrently
-make -j 4 transcripts FEED_URL="..."
-```
+### Error Handling Philosophy
 
-### Within-Stage Parallelism
+**Fail-fast**: Stages fail loudly on errors. No silent corruption. Make stops immediately on failure.
 
-Go binaries use **bounded worker pools** for internal concurrency:
+**Idempotency**: Re-running a stage is always safe. Existing outputs are detected and skipped.
 
-```go
-pool := concurrency.NewWorkerPool(workers)
-for _, episode := range episodes {
-    pool.Submit(func() error {
-        return processEpisode(episode)
-    })
-}
-pool.Wait()
-```
+**Atomic writes**: Temporary files are used, then atomically renamed to prevent partial writes
 
-**Benefits**:
-- No unbounded goroutines
-- Predictable resource usage
-- Graceful error handling
+## Extensibility: Adding New Source Types
 
-## Error Handling
+The system is designed to be extended. To add support for a new content type (e.g., YouTube videos):
 
-### Fail-Fast Philosophy
+1. Create source-specific binaries in `cmd/` (e.g., `raggo-youtube-download/`, `raggo-extract-audio/`)
+2. Reuse generic binaries where possible (`raggo-stt-audio`, `raggo-embed-podcast`)
+3. Create a new pipeline Makefile in `pipelines/youtube/Makefile`
+4. Define new schemas in `pkg/schema/youtube.go`
+5. Add a top-level delegator target in root `Makefile`
 
-Stages must **fail loudly** on errors:
+See `EXAMPLES.md` for detailed extension examples.
 
-```go
-if err != nil {
-    log.Fatal("Failed to download: %v", err)
-}
-```
+## Extensibility: Replacing External Services
 
-**Benefits**:
-- No silent corruption
-- Clear error messages
-- Make stops immediately
+Want to use a different STT or embedding service?
 
-### Idempotency
+**Option 1**: Wrap your service in an HTTP API matching the expected request/response format (see `EXAMPLES.md` for API specs)
 
-Re-running a stage should be safe:
+**Option 2**: Fork and modify the relevant binary (`cmd/raggo-stt-audio/`, `cmd/raggo-embed-podcast/`)
 
-```go
-if storage.MarkerExists(outputPath) {
-    log.Info("Output already exists, skipping")
-    return nil
-}
-```
-
-**Benefits**:
-- Re-running `make` is always safe
-- Partial failures don't corrupt state
-- Incremental processing
-
-### Atomic Writes
-
-Use temporary files for writes:
-
-```go
-tmpPath := outputPath + ".tmp"
-// Write to tmpPath
-os.Rename(tmpPath, outputPath)  // Atomic on POSIX
-```
-
-## Extensibility
-
-### Adding New Source Types
-
-To add YouTube video support:
-
-1. **Create source-specific binaries**:
-   - `cmd/raggo-youtube-download/` - Download videos
-   - `cmd/raggo-extract-audio/` - Extract audio from video
-   
-2. **Reuse generic binaries**:
-   - `raggo-stt-audio` (already generic)
-   - `raggo-embed-podcast` → rename to `raggo-embed-text`
-   - `raggo-index-podcast` → rename to `raggo-index`
-
-3. **Create pipeline-specific Makefile**:
-   ```makefile
-   # pipelines/youtube/Makefile
-   all: ../../data/youtube/index/qdrant.done
-   
-   $(AUDIO_DIR)/%.m4a: $(VIDEO_DIR)/%.mp4
-   	$(BIN_DIR)/raggo-extract-audio ...
-   ```
-
-4. **Add top-level delegator**:
-   ```makefile
-   # Root Makefile
-   youtube:
-   	$(MAKE) -C pipelines/youtube
-   ```
-
-5. **Define new schemas**:
-   ```go
-   // pkg/schema/youtube.go
-   type VideoMetadata struct { ... }
-   ```
-
-### Replacing External Services
-
-To use a different STT engine:
-
-**Option 1: HTTP Wrapper**
-```bash
-# Wrap your STT in HTTP service matching expected API
-python my_stt_wrapper.py --port 8000
-make transcripts STT_ENDPOINT="http://localhost:8000/stt"
-```
-
-**Option 2: Fork Binary**
-```bash
-# Copy and modify raggo-stt-audio
-cp -r cmd/raggo-stt-audio cmd/raggo-stt-whisper-local
-# Modify to call local Whisper binary
-# Update Makefile to use new binary
-```
+The system is designed for easy swapping of external dependencies.
 
 ## Testing Strategy
 
-### Unit Tests
+The codebase supports three levels of testing:
 
-Test shared libraries in isolation:
+1. **Unit tests**: Test shared libraries (`pkg/`) in isolation
+2. **Integration tests**: Test individual CLI binaries with fixtures
+3. **End-to-end tests**: Test full pipeline with small test feeds
 
-```go
-func TestHashString(t *testing.T) {
-    hash := hashing.HashString("test")
-    assert.Equal(t, expected, hash)
-}
-```
+See `CONTRIBUTING.md` for testing commands and practices.
 
-### Integration Tests
-
-Test individual CLI binaries:
-
-```bash
-# Test RSS ingestion
-bin/raggo-rss-podcast -feed-url="file://test/fixtures/feed.xml" -manifest-dir="test/output"
-jq -e '.episode_id' test/output/*.jsonl
-```
-
-### End-to-End Tests
-
-Test full pipeline with fixtures:
-
-```bash
-# Use test feed with 2 episodes
-make pipeline FEED_URL="file://test/fixtures/small-feed.xml"
-test -f data/index/*.done
-```
-
-## Operational Best Practices
+## Operational Considerations
 
 ### Monitoring
 
-Monitor artifact counts:
-
-```bash
-# Count episodes per stage
-find data/audio -name "*.mp3" | wc -l
-find data/transcripts -name "*.json" | wc -l
-find data/index -name "*.done" | wc -l
-```
+Monitor pipeline progress by counting artifacts at each stage. All intermediate outputs are files, so standard Unix tools work.
 
 ### Debugging
 
-Inspect intermediate artifacts:
+Inspect artifacts with `cat`, `jq`, and `grep`. Check specific stage outputs to identify failures. See `EXAMPLES.md` for debugging workflows.
 
-```bash
-# Check what failed
-make transcripts 2>&1 | grep ERROR
+### Performance
 
-# Examine specific artifact
-cat data/transcripts/<episode_id>.json | jq .segments[0]
-```
+**Bottlenecks:**
+- Audio download: Network I/O (increase workers)
+- STT/Embedding: External API rate limits (batch requests or use local inference)
+- Indexing: Qdrant network latency (batch upserts)
 
-### Maintenance
+**Optimization:** Use Make's `-j` flag for parallel episode processing, or modify binaries for batched API calls.
 
-Clean up old artifacts:
+### Security
 
-```bash
-# Remove transcripts older than 30 days
-find data/transcripts -name "*.json" -mtime +30 -delete
+**API Keys**: Store in environment variables or config files, never hardcode.
 
-# Re-run affected stages
-make chunks FEED_URL="..."
-```
+**Data Privacy**: All artifacts stored locally in gitignored `data/` directory. Encrypt at rest for sensitive content.
 
-## Performance Characteristics
+## Future Enhancement Opportunities
 
-### Bottlenecks
+Potential additions that maintain design principles:
+- Hash-based deduplication
+- Incremental feed updates
+- Speaker identification
+- Quality metrics tracking
+- Pipeline progress visualization
 
-1. **Audio download**: Network I/O bound → increase `WORKERS`
-2. **STT**: External API rate limits → batch requests
-3. **Embedding**: External API rate limits → batch requests
-4. **Indexing**: Qdrant network latency → batch upserts
-
-### Optimization Strategies
-
-1. **Parallel downloads**: `make -j 8 audio`
-2. **Batch API calls**: Modify binaries to batch 10 items per request
-3. **Local inference**: Run Whisper/embeddings locally to remove API limits
-4. **Incremental processing**: Only process new episodes
-
-## Security Considerations
-
-### API Keys
-
-Store secrets in environment or config files:
-
-```bash
-export OPENAI_API_KEY="sk-..."
-export QDRANT_API_KEY="..."
-
-# Reference in binaries via flags
-bin/raggo-embed-podcast -api-key="$OPENAI_API_KEY" ...
-```
-
-### Data Privacy
-
-All artifacts are stored locally:
-
-- Audio files: `data/audio/` (gitignored)
-- Transcripts: `data/transcripts/` (gitignored)
-- Embeddings: `data/embeddings/` (gitignored)
-
-**Recommendation**: Encrypt `data/` directory at rest if processing sensitive content.
-
-## Future Enhancements
-
-### Potential Additions
-
-1. **Deduplication**: Hash-based skip of duplicate chunks
-2. **Incremental updates**: Only process new episodes from feed
-3. **Metadata extraction**: Speaker identification, topic modeling
-4. **Quality metrics**: Transcript confidence scores, embedding quality
-5. **Visualization**: Pipeline progress dashboard
-
-### Non-Goals
-
-1. ❌ Real-time processing (batch-oriented by design)
-2. ❌ Auto-scaling (use external orchestration if needed)
-3. ❌ Built-in web UI (CLI-first philosophy)
-4. ❌ Plugin system (fork and modify preferred)
+Remember: The system prioritizes inspectability and determinism over convenience and automation.

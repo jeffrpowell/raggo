@@ -106,9 +106,13 @@ func downloadEpisode(log *logging.Logger, ep schema.EpisodeManifest, audioDir st
 	}
 
 	written, err := io.Copy(f, resp.Body)
-	f.Close()
+	if closeErr := f.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
 	if err != nil {
-		os.Remove(tmpPath)
+		if removeErr := os.Remove(tmpPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			return fmt.Errorf("copy failed: %w, cleanup failed: %v", err, removeErr)
+		}
 		return err
 	}
 

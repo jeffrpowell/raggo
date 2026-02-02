@@ -8,6 +8,9 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         git \
         make \
         build-essential \
+        pkg-config \
+        libmupdf-dev \
+        mupdf-tools \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

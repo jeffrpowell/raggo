@@ -11,7 +11,7 @@ func EnsureDir(path string) error {
 	return os.MkdirAll(path, 0755)
 }
 
-func WriteJSON(path string, v interface{}) error {
+func WriteJSON(path string, v interface{}) (err error) {
 	if err := EnsureDir(filepath.Dir(path)); err != nil {
 		return err
 	}
@@ -20,7 +20,11 @@ func WriteJSON(path string, v interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	encoder := json.NewEncoder(f)
 	encoder.SetIndent("", "  ")
@@ -37,7 +41,7 @@ func ReadJSON(path string, v interface{}) error {
 	return json.NewDecoder(f).Decode(v)
 }
 
-func AppendJSONL(path string, v interface{}) error {
+func AppendJSONL(path string, v interface{}) (err error) {
 	if err := EnsureDir(filepath.Dir(path)); err != nil {
 		return err
 	}
@@ -46,7 +50,11 @@ func AppendJSONL(path string, v interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	return json.NewEncoder(f).Encode(v)
 }

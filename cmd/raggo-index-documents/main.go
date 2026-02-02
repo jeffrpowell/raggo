@@ -6,27 +6,28 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
 	"github.com/jeffrpowell/raggo/pkg/storage"
-	"github.com/qdrant/go-client/qdrant"
+	qdrant "github.com/qdrant/go-client/qdrant"
 )
 
 func main() {
 	var (
-		documentID     string
-		manifestDir    string
-		chunkDir       string
-		embeddingDir   string
-		indexDir       string
-		qdrantHost     string
-		qdrantPort     int
-		collection     string
-		corpus         string
-		sourceType     string
+		documentID   string
+		manifestDir  string
+		chunkDir     string
+		embeddingDir string
+		indexDir     string
+		qdrantHost   string
+		qdrantPort   int
+		collection   string
+		corpus       string
+		sourceType   string
 	)
 
 	flag.StringVar(&documentID, "document-id", "", "Document ID")
@@ -152,12 +153,12 @@ func run(log *logging.Logger, documentID, manifestDir, chunkDir, embeddingDir, i
 		}
 
 		point := &qdrant.PointStruct{
-			Id:      qdrant.NewIDString(pointID),
+			Id:      qdrant.NewID(pointID),
 			Vectors: qdrant.NewVectors(embedding.Vector...),
 			Payload: qdrant.NewValueMap(payload),
 		}
 
-		if err := client.Upsert(ctx, &qdrant.UpsertPoints{
+		if _, err := client.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: collection,
 			Points:         []*qdrant.PointStruct{point},
 		}); err != nil {
@@ -211,13 +212,7 @@ func collectionExists(ctx context.Context, client *qdrant.Client, name string) (
 		return false, err
 	}
 
-	for _, coll := range collections {
-		if coll.Name == name {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return slices.Contains(collections, name), nil
 }
 
 func createCollection(ctx context.Context, client *qdrant.Client, name string, dimension uint64) error {

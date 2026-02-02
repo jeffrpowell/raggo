@@ -18,15 +18,19 @@ type DocumentManifest struct {
 }
 
 type ExtractedText struct {
-	DocumentID    string            `json:"document_id"`
-	FilePath      string            `json:"file_path"`
-	ContentHash   string            `json:"content_hash"`
-	Text          string            `json:"text"`
-	CharCount     int               `json:"char_count"`
-	WordCount     int               `json:"word_count"`
-	Extractor     string            `json:"extractor"`
-	ExtractedAt   time.Time         `json:"extracted_at"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	DocumentID    string                 `json:"document_id"`
+	FilePath      string                 `json:"file_path"`
+	ContentHash   string                 `json:"content_hash"`
+	Text          string                 `json:"text"`
+	CharCount     int                    `json:"char_count"`
+	WordCount     int                    `json:"word_count"`
+	Extractor     string                 `json:"extractor"`
+	ExtractedAt   time.Time              `json:"extracted_at"`
+	Metadata      map[string]string      `json:"metadata,omitempty"`
+	TikaMetadata  map[string]interface{} `json:"tika_metadata,omitempty"`
+	OCRProvider   string                 `json:"ocr_provider,omitempty"`
+	ImageCount    int                    `json:"image_count,omitempty"`
+	PageCount     int                    `json:"page_count,omitempty"`
 }
 
 type TextChunk struct {

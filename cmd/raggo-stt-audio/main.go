@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -29,12 +28,12 @@ type STTResponse struct {
 
 func main() {
 	var (
-		episodeID      string
-		audioPath      string
-		transcriptDir  string
-		sttEndpoint    string
-		model          string
-		modelVersion   string
+		episodeID     string
+		audioPath     string
+		transcriptDir string
+		sttEndpoint   string
+		model         string
+		modelVersion  string
 	)
 
 	flag.StringVar(&episodeID, "episode-id", "", "Episode ID")

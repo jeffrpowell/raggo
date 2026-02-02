@@ -35,7 +35,7 @@
 		}
 	},
 
-	"forwardPorts": [6333, 6334],
+	"forwardPorts": [6333, 6334, 9998],
 	"portsAttributes": {
 		"6333": {
 			"label": "Qdrant HTTP",
@@ -43,6 +43,10 @@
 		},
 		"6334": {
 			"label": "Qdrant gRPC",
+			"onAutoForward": "notify"
+		},
+		"9998": {
+			"label": "Tika HTTP",
 			"onAutoForward": "notify"
 		}
 	},

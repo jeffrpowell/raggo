@@ -12,5 +12,11 @@ services:
       - QDRANT__SERVICE__GRPC_PORT=6334
     restart: unless-stopped
 
+  tika:
+    image: apache/tika:latest-full
+    ports:
+      - "9998:9998"  # Tika HTTP API
+    restart: unless-stopped
+
 volumes:
   qdrant_storage:
