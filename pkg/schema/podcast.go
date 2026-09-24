@@ -78,6 +78,7 @@ type Embedding struct {
 	ChunkID      string    `json:"chunk_id"`
 	EpisodeID    string    `json:"episode_id"`
 	ChunkHash    string    `json:"chunk_hash"`
+	ContextHash  string    `json:"context_hash,omitempty"`
 	Model        string    `json:"model"`
 	ModelVersion string    `json:"model_version"`
 	Vector       []float32 `json:"vector"`
@@ -95,6 +96,7 @@ type IndexPayload struct {
 	StartTime    float64           `json:"start_time"`
 	EndTime      float64           `json:"end_time"`
 	Text         string            `json:"text"`
+	Context      string            `json:"context,omitempty"`
 	Model        string            `json:"model"`
 	ModelVersion string            `json:"model_version"`
 	Metadata     map[string]string `json:"metadata,omitempty"`

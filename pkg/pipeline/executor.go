@@ -78,6 +78,26 @@ func (e *Executor) ExecutePipeline(corpus config.CorpusConfig) error {
 
 func (e *Executor) executeStage(ctx *ExecutionContext, stage Stage) error {
 	args := stage.BuildArgs(ctx)
+	if stage.Items == nil {
+		return e.runBinary(stage, args)
+	}
+
+	items, err := stage.Items(ctx)
+	if err != nil {
+		return fmt.Errorf("list items: %w", err)
+	}
+	e.logger.Info("Stage %s: %d items", stage.Name, len(items))
+	for _, item := range items {
+		itemArgs := append(append([]string{}, args...), stage.ItemFlag, item.ID)
+		itemArgs = append(itemArgs, item.Args...)
+		if err := e.runBinary(stage, itemArgs); err != nil {
+			return fmt.Errorf("%s %s: %w", stage.ItemFlag, item.ID, err)
+		}
+	}
+	return nil
+}
+
+func (e *Executor) runBinary(stage Stage, args []string) error {
 	cmd := exec.Command(stage.Binary, args...)
 
 	var stdout, stderr bytes.Buffer

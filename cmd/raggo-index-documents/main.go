@@ -6,14 +6,15 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jeffrpowell/raggo/pkg/config"
+	"github.com/jeffrpowell/raggo/pkg/contextual"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
 	"github.com/jeffrpowell/raggo/pkg/storage"
+	"github.com/jeffrpowell/raggo/pkg/vectorstore"
 	qdrant "github.com/qdrant/go-client/qdrant"
 )
 
@@ -24,6 +25,7 @@ func main() {
 		documentID   string
 		manifestDir  string
 		chunkDir     string
+		contextDir   string
 		embeddingDir string
 		indexDir     string
 		qdrantHost   string
@@ -38,6 +40,7 @@ func main() {
 	flag.StringVar(&documentID, "document-id", "", "Document ID")
 	flag.StringVar(&manifestDir, "manifest-dir", "data/manifests", "Directory for manifests")
 	flag.StringVar(&chunkDir, "chunk-dir", "data/documents/chunks", "Directory for chunks")
+	flag.StringVar(&contextDir, "context-dir", "", "Directory for chunk contexts")
 	flag.StringVar(&embeddingDir, "embedding-dir", "data/documents/embeddings", "Directory for embeddings")
 	flag.StringVar(&indexDir, "index-dir", "data/documents/index", "Directory for index markers")
 	flag.StringVar(&qdrantHost, "qdrant-host", "localhost", "Qdrant host")
@@ -60,6 +63,7 @@ func main() {
 
 	manifestDir = config.ResolveDocumentsTextDir(cfg, corpusID, manifestDir)
 	chunkDir = config.ResolveDocumentsChunksDir(cfg, corpusID, chunkDir)
+	contextDir = config.ResolveDocumentsContextsDir(cfg, corpusID, contextDir)
 	embeddingDir = config.ResolveDocumentsEmbeddingsDir(cfg, corpusID, embeddingDir)
 	indexDir = config.ResolveDocumentsIndexDir(cfg, corpusID, indexDir)
 	qdrantHost = config.ResolveQdrantHost(cfg, qdrantHost)
@@ -69,12 +73,12 @@ func main() {
 		log.Fatal("document-id is required")
 	}
 
-	if err := run(log, documentID, manifestDir, chunkDir, embeddingDir, indexDir, qdrantHost, qdrantPort, collection, corpus, sourceType); err != nil {
+	if err := run(log, documentID, manifestDir, chunkDir, contextDir, embeddingDir, indexDir, qdrantHost, qdrantPort, collection, corpus, sourceType); err != nil {
 		log.Fatal("Failed: %v", err)
 	}
 }
 
-func run(log *logging.Logger, documentID, manifestDir, chunkDir, embeddingDir, indexDir, qdrantHost string, qdrantPort int, collection, corpus, sourceType string) error {
+func run(log *logging.Logger, documentID, manifestDir, chunkDir, contextDir, embeddingDir, indexDir, qdrantHost string, qdrantPort int, collection, corpus, sourceType string) error {
 	markerPath := filepath.Join(indexDir, fmt.Sprintf("%s.done", documentID))
 
 	if storage.MarkerExists(markerPath) {
@@ -115,6 +119,11 @@ func run(log *logging.Logger, documentID, manifestDir, chunkDir, embeddingDir, i
 		return fmt.Errorf("chunk/embedding count mismatch: %d != %d", len(chunks), len(embeddings))
 	}
 
+	contexts, err := contextual.LoadContexts(contextDir, documentID)
+	if err != nil {
+		return fmt.Errorf("read contexts: %w", err)
+	}
+
 	var manifest *schema.DocumentManifest
 	if err := findDocumentManifest(manifestDir, documentID, &manifest); err != nil {
 		log.Warn("Could not load document manifest: %v", err)
@@ -133,16 +142,12 @@ func run(log *logging.Logger, documentID, manifestDir, chunkDir, embeddingDir, i
 
 	ctx := context.Background()
 
-	exists, err := collectionExists(ctx, client, collection)
+	created, err := vectorstore.EnsureHybridCollection(ctx, client, collection, uint64(embeddings[0].Dimension))
 	if err != nil {
-		return fmt.Errorf("check collection: %w", err)
+		return err
 	}
-
-	if !exists {
-		log.Info("Creating collection: %s", collection)
-		if err := createCollection(ctx, client, collection, uint64(embeddings[0].Dimension)); err != nil {
-			return fmt.Errorf("create collection: %w", err)
-		}
+	if created {
+		log.Info("Created collection: %s", collection)
 	}
 
 	for i := range chunks {
@@ -154,6 +159,7 @@ func run(log *logging.Logger, documentID, manifestDir, chunkDir, embeddingDir, i
 		}
 
 		pointID := uuid.New().String()
+		chunkContext := contextual.Lookup(contexts, chunk.ChunkID, chunk.TextHash)
 
 		payload := map[string]interface{}{
 			"point_id":      pointID,
@@ -161,10 +167,14 @@ func run(log *logging.Logger, documentID, manifestDir, chunkDir, embeddingDir, i
 			"document_id":   documentID,
 			"corpus":        corpus,
 			"source_type":   sourceType,
+			"chunk_index":   chunk.ChunkIndex,
 			"text":          chunk.Text,
 			"model":         embedding.Model,
 			"model_version": embedding.ModelVersion,
 			"indexed_at":    time.Now().Format(time.RFC3339),
+		}
+		if chunkContext != "" {
+			payload["context"] = chunkContext
 		}
 
 		if manifest != nil {
@@ -175,7 +185,7 @@ func run(log *logging.Logger, documentID, manifestDir, chunkDir, embeddingDir, i
 
 		point := &qdrant.PointStruct{
 			Id:      qdrant.NewID(pointID),
-			Vectors: qdrant.NewVectors(embedding.Vector...),
+			Vectors: vectorstore.HybridVectors(embedding.Vector, contextual.EmbeddingText(chunkContext, chunk.Text)),
 			Payload: qdrant.NewValueMap(payload),
 		}
 
@@ -225,23 +235,4 @@ func findDocumentManifest(manifestDir, documentID string, result **schema.Docume
 	}
 
 	return fmt.Errorf("manifest not found")
-}
-
-func collectionExists(ctx context.Context, client *qdrant.Client, name string) (bool, error) {
-	collections, err := client.ListCollections(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	return slices.Contains(collections, name), nil
-}
-
-func createCollection(ctx context.Context, client *qdrant.Client, name string, dimension uint64) error {
-	return client.CreateCollection(ctx, &qdrant.CreateCollection{
-		CollectionName: name,
-		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-			Size:     dimension,
-			Distance: qdrant.Distance_Cosine,
-		}),
-	})
 }

@@ -50,6 +50,7 @@ type TextEmbedding struct {
 	ChunkID      string    `json:"chunk_id"`
 	DocumentID   string    `json:"document_id"`
 	ChunkHash    string    `json:"chunk_hash"`
+	ContextHash  string    `json:"context_hash,omitempty"`
 	Model        string    `json:"model"`
 	ModelVersion string    `json:"model_version"`
 	Vector       []float32 `json:"vector"`
@@ -67,6 +68,7 @@ type DocumentIndexPayload struct {
 	FileName     string            `json:"file_name"`
 	FileType     string            `json:"file_type"`
 	Text         string            `json:"text"`
+	Context      string            `json:"context,omitempty"`
 	Model        string            `json:"model"`
 	ModelVersion string            `json:"model_version"`
 	Metadata     map[string]string `json:"metadata,omitempty"`

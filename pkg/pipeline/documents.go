@@ -35,6 +35,8 @@ func BuildDocumentPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipe
 						"-text-dir", cfg.Storage.Documents.Text,
 					}
 				},
+				Items:    documentManifestItems(cfg.Storage.Documents.Text),
+				ItemFlag: "-document-id",
 				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
 					return false, nil
 				},
@@ -60,8 +62,30 @@ func BuildDocumentPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipe
 						"-overlap-size", fmt.Sprintf("%d", overlapSize),
 					}
 				},
+				Items:    idsFromFiles(cfg.Storage.Documents.Text, ".json"),
+				ItemFlag: "-document-id",
 				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
 					return false, nil
+				},
+			},
+			{
+				Name:   "contextualize",
+				Binary: "/usr/local/bin/raggo-contextualize-text",
+				BuildArgs: func(ctx *ExecutionContext) []string {
+					args := []string{
+						"-config", "/etc/raggo/raggo.yml",
+						"-corpus-id", corpus.ID,
+						"-manifest-dir", cfg.Storage.Documents.Text,
+						"-chunk-dir", cfg.Storage.Documents.Chunks,
+						"-context-dir", cfg.Storage.Documents.Contexts,
+					}
+					if budget, ok := corpus.Config["context_budget_chars"].(int); ok {
+						args = append(args, "-context-budget-chars", fmt.Sprintf("%d", budget))
+					}
+					return args
+				},
+				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
+					return !contextualizeEnabled(corpus), nil
 				},
 			},
 			{
@@ -72,9 +96,12 @@ func BuildDocumentPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipe
 						"-config", "/etc/raggo/raggo.yml",
 						"-corpus-id", corpus.ID,
 						"-chunk-dir", cfg.Storage.Documents.Chunks,
+						"-context-dir", cfg.Storage.Documents.Contexts,
 						"-embedding-dir", cfg.Storage.Documents.Embeddings,
 					}
 				},
+				Items:    idsFromFiles(cfg.Storage.Documents.Chunks, ".jsonl"),
+				ItemFlag: "-document-id",
 				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
 					return false, nil
 				},
@@ -89,16 +116,28 @@ func BuildDocumentPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipe
 						"-config", "/etc/raggo/raggo.yml",
 						"-corpus-id", corpus.ID,
 						"-chunk-dir", cfg.Storage.Documents.Chunks,
+						"-context-dir", cfg.Storage.Documents.Contexts,
 						"-embedding-dir", cfg.Storage.Documents.Embeddings,
 						"-index-dir", cfg.Storage.Documents.Index,
 						"-collection", collection,
 						"-corpus", corpusName,
 					}
 				},
+				Items:    idsFromFiles(cfg.Storage.Documents.Chunks, ".jsonl"),
+				ItemFlag: "-document-id",
 				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
 					return false, nil
 				},
 			},
 		},
 	}
+}
+
+// contextualizeEnabled reports whether a corpus opts into contextual
+// retrieval. Defaults to true; set `contextualize: false` to skip the stage.
+func contextualizeEnabled(corpus config.CorpusConfig) bool {
+	if enabled, ok := corpus.Config["contextualize"].(bool); ok {
+		return enabled
+	}
+	return true
 }

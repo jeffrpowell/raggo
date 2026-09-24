@@ -5,16 +5,19 @@ storage:
     audio: ${root}/podcast/audio
     transcripts: ${root}/podcast/transcripts
     chunks: ${root}/podcast/chunks
+    contexts: ${root}/podcast/contexts
     embeddings: ${root}/podcast/embeddings
     index: ${root}/podcast/index
   documents:
     sources: /mnt/documents           # Mount point for source documents
     text: ${root}/documents/text
     chunks: ${root}/documents/chunks
+    contexts: ${root}/documents/contexts
     embeddings: ${root}/documents/embeddings
     index: ${root}/documents/index
 
 qdrant:
+  # Requires Qdrant >= 1.15.2 (server-side BM25 inference for the "bm25" sparse vector)
   host: qdrant                        # Qdrant server hostname
   port: 6334                          # Qdrant gRPC port (6333 for HTTP)
   metadata_collection: raggo_metadata # Collection for orchestrator state tracking
@@ -30,6 +33,30 @@ services:
   embed_model: text-embedding-3-small # Embedding model name (optional)
   embed_version: v1                   # Embedding model version (optional)
   
+  # Contextual retrieval: an LLM writes a short passage situating each chunk in
+  # its document; the passage is prepended before embedding and BM25 indexing.
+  # Any OpenAI-compatible chat endpoint works (llama-server, llama-swap).
+  # Leave context_endpoint empty to skip contextualization.
+  #
+  # context_budget_chars caps how much document text goes into each prompt
+  # (~4 chars/token). Documents that fit use the full document as context;
+  # larger ones use a cached synopsis plus a local excerpt.
+  #   qwen3.5-4b alongside the embedder: 12000 (fits a ~8K-token context)
+  #   gemma-4-12b with a larger window:  200000 (~64K tokens)
+  #
+  # llama-swap tip: keep the small context model, embedder, and reranker loaded
+  # together so the pipeline never swaps:
+  #   groups:
+  #     rag:
+  #       swap: false
+  #       exclusive: true
+  #       members: [qwen3.5-4b, embed-qwen3-0.6b, qwen3-reranker-0.6b]
+  # With a larger model that must swap, contextualize runs across the whole
+  # corpus before embed starts, so each run swaps at most once.
+  context_endpoint: http://llama-swap:8080/v1/chat/completions
+  context_model: qwen3.5-4b
+  context_budget_chars: 12000
+
   # Apache Tika for document text extraction
   tika_endpoint: http://tika-service:9998
   
@@ -79,6 +106,9 @@ corpora:
       # Optional: Override default chunking parameters
       chunk_size: 1000
       overlap_size: 100
+      # Optional: contextual retrieval overrides
+      # contextualize: false            # Skip the contextualize stage for this corpus
+      # context_budget_chars: 40000     # Per-corpus prompt budget
   
   # Example: One-shot podcast processing
   - id: initial-load

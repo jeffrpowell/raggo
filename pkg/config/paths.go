@@ -139,3 +139,53 @@ func ResolveQdrantPort(cfg *Config, flagOverride int) int {
 	}
 	return 6334
 }
+
+func ResolvePodcastContextsDir(cfg *Config, corpusID, flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	if cfg != nil && cfg.Storage.Podcast.Contexts != "" {
+		return cfg.Storage.Podcast.Contexts
+	}
+	return "/var/lib/raggo/podcast/contexts"
+}
+
+func ResolveDocumentsContextsDir(cfg *Config, corpusID, flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	if cfg != nil && cfg.Storage.Documents.Contexts != "" {
+		return cfg.Storage.Documents.Contexts
+	}
+	return "/var/lib/raggo/documents/contexts"
+}
+
+func ResolveContextEndpoint(cfg *Config, flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	if cfg != nil {
+		return cfg.Services.ContextEndpoint
+	}
+	return ""
+}
+
+func ResolveContextModel(cfg *Config, flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	if cfg != nil && cfg.Services.ContextModel != "" {
+		return cfg.Services.ContextModel
+	}
+	return "qwen3.5-4b"
+}
+
+func ResolveContextBudgetChars(cfg *Config, flagOverride int) int {
+	if flagOverride != 0 {
+		return flagOverride
+	}
+	if cfg != nil && cfg.Services.ContextBudgetChars != 0 {
+		return cfg.Services.ContextBudgetChars
+	}
+	return 12000
+}

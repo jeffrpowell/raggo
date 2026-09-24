@@ -23,21 +23,25 @@ RAG-Go, get it?
 
 Raggo supports two pipeline types:
 
-**Podcast Pipeline** (7 stages):
+**Podcast Pipeline** (8 stages):
 1. **RSS Ingestion** - Parse feed, extract episode metadata
 2. **Audio Download** - Download audio files with parallel workers
 3. **Speech-to-Text** - Transcribe audio via external STT service
 4. **Normalization** - Normalize transcripts (punctuation, whitespace, speakers)
 5. **Chunking** - Create time-windowed chunks (default: 60s windows, 5s overlap)
-6. **Embedding** - Generate embeddings via external service
-7. **Indexing** - Upsert vectors into Qdrant with metadata
+6. **Contextualize** - LLM writes a short context situating each chunk in its episode (optional)
+7. **Embedding** - Generate embeddings of context + chunk via external service
+8. **Indexing** - Upsert dense + BM25 vectors into Qdrant with metadata
 
-**Document Pipeline** (5 stages):
+**Document Pipeline** (6 stages):
 1. **Scan** - Discover documents in directory
 2. **Extract** - Extract text using Tika and optional vision OCR
 3. **Chunk** - Split into character-based chunks
-4. **Embed** - Generate embeddings via external service
-5. **Index** - Upsert vectors into Qdrant with metadata
+4. **Contextualize** - LLM writes a short context situating each chunk in its document (optional)
+5. **Embed** - Generate embeddings of context + chunk via external service
+6. **Index** - Upsert dense + BM25 vectors into Qdrant with metadata
+
+Contextualization follows Anthropic's [Contextual Retrieval](https://www.anthropic.com/engineering/contextual-retrieval), adapted for small local models whose context window can't hold a whole document. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#contextual-retrieval). For the query side (hybrid search, RRF fusion, reranking), see [examples/open-webui](examples/open-webui/) for Open WebUI chat and [examples/open-webui-computer](examples/open-webui-computer/) for Open WebUI Computer agents.
 
 The orchestrator manages pipeline execution with automatic retries, state tracking, and multiple operating modes. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design.
 
@@ -138,6 +142,9 @@ cat data/podcast/manifests/*.jsonl | jq .title
 
 # View chunks
 cat data/podcast/chunks/<episode_id>.jsonl | jq -c
+
+# View generated chunk contexts (mode is "full" or "windowed")
+cat data/podcast/contexts/<episode_id>.jsonl | jq -r '[.mode, .context] | @tsv'
 
 # Check embedding dimensions
 cat data/podcast/embeddings/<episode_id>.jsonl | jq .dimension | head -1

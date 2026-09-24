@@ -19,6 +19,7 @@ type PodcastStorageConfig struct {
 	Audio       string `yaml:"audio"`
 	Transcripts string `yaml:"transcripts"`
 	Chunks      string `yaml:"chunks"`
+	Contexts    string `yaml:"contexts"`
 	Embeddings  string `yaml:"embeddings"`
 	Index       string `yaml:"index"`
 }
@@ -27,6 +28,7 @@ type DocumentStorageConfig struct {
 	Sources    string `yaml:"sources"`
 	Text       string `yaml:"text"`
 	Chunks     string `yaml:"chunks"`
+	Contexts   string `yaml:"contexts"`
 	Embeddings string `yaml:"embeddings"`
 	Index      string `yaml:"index"`
 }
@@ -38,8 +40,11 @@ type QdrantConfig struct {
 }
 
 type ServicesConfig struct {
-	STTEndpoint   string `yaml:"stt_endpoint"`
-	EmbedEndpoint string `yaml:"embed_endpoint"`
+	STTEndpoint        string `yaml:"stt_endpoint"`
+	EmbedEndpoint      string `yaml:"embed_endpoint"`
+	ContextEndpoint    string `yaml:"context_endpoint"`
+	ContextModel       string `yaml:"context_model"`
+	ContextBudgetChars int    `yaml:"context_budget_chars"`
 }
 
 type OrchestratorConfig struct {

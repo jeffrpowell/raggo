@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/jeffrpowell/raggo/pkg/config"
+	"github.com/jeffrpowell/raggo/pkg/contextual"
+	"github.com/jeffrpowell/raggo/pkg/hashing"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
 	"github.com/jeffrpowell/raggo/pkg/storage"
@@ -34,6 +36,7 @@ func main() {
 		corpusID        string
 		episodeID       string
 		chunkDir        string
+		contextDir      string
 		embeddingDir    string
 		embedEndpoint   string
 		model           string
@@ -44,6 +47,7 @@ func main() {
 	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&episodeID, "episode-id", "", "Episode ID")
 	flag.StringVar(&chunkDir, "chunk-dir", "data/chunks", "Directory for chunks")
+	flag.StringVar(&contextDir, "context-dir", "", "Directory for chunk contexts (embeds context + chunk when present)")
 	flag.StringVar(&embeddingDir, "embedding-dir", "data/embeddings", "Directory for embeddings")
 	flag.StringVar(&embedEndpoint, "embed-endpoint", "", "Embedding service HTTP endpoint (optional)")
 	flag.StringVar(&model, "model", "text-embedding-3-small", "Embedding model name")
@@ -62,6 +66,7 @@ func main() {
 	}
 
 	chunkDir = config.ResolveChunksDir(cfg, corpusID, chunkDir)
+	contextDir = config.ResolvePodcastContextsDir(cfg, corpusID, contextDir)
 	embeddingDir = config.ResolveEmbeddingsDir(cfg, corpusID, embeddingDir)
 	embedEndpoint = config.ResolveEmbedEndpoint(cfg, embedEndpoint)
 
@@ -69,12 +74,12 @@ func main() {
 		log.Fatal("episode-id is required")
 	}
 
-	if err := run(log, episodeID, chunkDir, embeddingDir, embedEndpoint, model, modelVersion); err != nil {
+	if err := run(log, episodeID, chunkDir, contextDir, embeddingDir, embedEndpoint, model, modelVersion); err != nil {
 		log.Fatal("Failed: %v", err)
 	}
 }
 
-func run(log *logging.Logger, episodeID, chunkDir, embeddingDir, embedEndpoint, model, modelVersion string) error {
+func run(log *logging.Logger, episodeID, chunkDir, contextDir, embeddingDir, embedEndpoint, model, modelVersion string) error {
 	chunkPath := filepath.Join(chunkDir, fmt.Sprintf("%s.jsonl", episodeID))
 	embeddingPath := filepath.Join(embeddingDir, fmt.Sprintf("%s.jsonl", episodeID))
 
@@ -97,7 +102,12 @@ func run(log *logging.Logger, episodeID, chunkDir, embeddingDir, embedEndpoint, 
 		return fmt.Errorf("read chunks: %w", err)
 	}
 
-	log.Info("Generating embeddings for %d chunks", len(chunks))
+	contexts, err := contextual.LoadContexts(contextDir, episodeID)
+	if err != nil {
+		return fmt.Errorf("read contexts: %w", err)
+	}
+
+	log.Info("Generating embeddings for %d chunks (%d with context)", len(chunks), len(contexts))
 
 	if err := os.Remove(embeddingPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove old embeddings: %w", err)
@@ -106,9 +116,10 @@ func run(log *logging.Logger, episodeID, chunkDir, embeddingDir, embedEndpoint, 
 	for i, chunk := range chunks {
 		var vector []float32
 		var err error
+		chunkContext := contextual.Lookup(contexts, chunk.ChunkID, chunk.TextHash)
 
 		if embedEndpoint != "" {
-			vector, err = generateEmbeddingViaHTTP(embedEndpoint, chunk.Text, model)
+			vector, err = generateEmbeddingViaHTTP(embedEndpoint, contextual.EmbeddingText(chunkContext, chunk.Text), model)
 			if err != nil {
 				return fmt.Errorf("generate embedding for chunk %d: %w", i, err)
 			}
@@ -121,6 +132,7 @@ func run(log *logging.Logger, episodeID, chunkDir, embeddingDir, embedEndpoint, 
 			ChunkID:      chunk.ChunkID,
 			EpisodeID:    chunk.EpisodeID,
 			ChunkHash:    chunk.TextHash,
+			ContextHash:  contextHash(chunkContext),
 			Model:        model,
 			ModelVersion: modelVersion,
 			Vector:       vector,
@@ -176,4 +188,11 @@ func generatePlaceholderEmbedding() []float32 {
 		vec[i] = 0.1
 	}
 	return vec
+}
+
+func contextHash(chunkContext string) string {
+	if chunkContext == "" {
+		return ""
+	}
+	return hashing.HashString(chunkContext)
 }

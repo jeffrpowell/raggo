@@ -59,6 +59,8 @@ func BuildPodcastPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipel
 						"-transcript-dir", cfg.Storage.Podcast.Transcripts,
 					}
 				},
+				Items:    audioItems(cfg.Storage.Podcast.Audio),
+				ItemFlag: "-episode-id",
 				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
 					return false, nil
 				},
@@ -73,6 +75,8 @@ func BuildPodcastPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipel
 						"-transcript-dir", cfg.Storage.Podcast.Transcripts,
 					}
 				},
+				Items:    idsFromFiles(cfg.Storage.Podcast.Transcripts, ".json", ".normalized.json"),
+				ItemFlag: "-episode-id",
 				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
 					return false, nil
 				},
@@ -88,8 +92,30 @@ func BuildPodcastPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipel
 						"-chunk-dir", cfg.Storage.Podcast.Chunks,
 					}
 				},
+				Items:    idsFromFiles(cfg.Storage.Podcast.Transcripts, ".normalized.json"),
+				ItemFlag: "-episode-id",
 				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
 					return false, nil
+				},
+			},
+			{
+				Name:   "contextualize",
+				Binary: "/usr/local/bin/raggo-contextualize-podcast",
+				BuildArgs: func(ctx *ExecutionContext) []string {
+					args := []string{
+						"-config", "/etc/raggo/raggo.yml",
+						"-corpus-id", corpus.ID,
+						"-manifest-dir", cfg.Storage.Podcast.Audio,
+						"-chunk-dir", cfg.Storage.Podcast.Chunks,
+						"-context-dir", cfg.Storage.Podcast.Contexts,
+					}
+					if budget, ok := corpus.Config["context_budget_chars"].(int); ok {
+						args = append(args, "-context-budget-chars", fmt.Sprintf("%d", budget))
+					}
+					return args
+				},
+				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
+					return !contextualizeEnabled(corpus), nil
 				},
 			},
 			{
@@ -100,9 +126,12 @@ func BuildPodcastPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipel
 						"-config", "/etc/raggo/raggo.yml",
 						"-corpus-id", corpus.ID,
 						"-chunk-dir", cfg.Storage.Podcast.Chunks,
+						"-context-dir", cfg.Storage.Podcast.Contexts,
 						"-embedding-dir", cfg.Storage.Podcast.Embeddings,
 					}
 				},
+				Items:    idsFromFiles(cfg.Storage.Podcast.Chunks, ".jsonl"),
+				ItemFlag: "-episode-id",
 				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
 					return false, nil
 				},
@@ -117,12 +146,15 @@ func BuildPodcastPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipel
 						"-config", "/etc/raggo/raggo.yml",
 						"-corpus-id", corpus.ID,
 						"-chunk-dir", cfg.Storage.Podcast.Chunks,
+						"-context-dir", cfg.Storage.Podcast.Contexts,
 						"-embedding-dir", cfg.Storage.Podcast.Embeddings,
 						"-index-dir", cfg.Storage.Podcast.Index,
 						"-collection", collection,
 						"-corpus", corpusName,
 					}
 				},
+				Items:    idsFromFiles(cfg.Storage.Podcast.Chunks, ".jsonl"),
+				ItemFlag: "-episode-id",
 				CheckSkip: func(ctx *ExecutionContext) (bool, error) {
 					return false, nil
 				},

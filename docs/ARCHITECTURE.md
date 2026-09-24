@@ -63,16 +63,21 @@ raggo/
 │   ├── raggo-stt-audio/          # Speech-to-text transcription
 │   ├── raggo-normalize-podcast/  # Podcast transcript normalization
 │   ├── raggo-chunk-podcast/      # Podcast time-based chunking
+│   ├── raggo-contextualize-podcast/ # LLM chunk context for podcast chunks
 │   ├── raggo-embed-podcast/      # Podcast embedding generation
 │   ├── raggo-index-podcast/      # Podcast Qdrant indexing
 │   ├── raggo-scan-documents/     # Document discovery/scanning
 │   ├── raggo-extract-text/       # Text extraction from documents
 │   ├── raggo-chunk-text/         # Generic text chunking
+│   ├── raggo-contextualize-text/ # LLM chunk context for document chunks
 │   ├── raggo-embed-text/         # Generic text embedding
 │   └── raggo-index-documents/    # Document Qdrant indexing
 │
 ├── pkg/                          # Shared libraries
 │   ├── config/                   # Configuration loading and validation
+│   ├── contextual/               # Contextual retrieval (full/windowed prompts, synopsis)
+│   ├── llm/                      # OpenAI-compatible chat client (llama-server)
+│   ├── vectorstore/              # Hybrid Qdrant collection layout (dense + bm25)
 │   ├── state/                    # Qdrant-based state management
 │   ├── pipeline/                 # Pipeline definitions and executor
 │   ├── schema/                   # Data schemas (podcast.go, document.go)
@@ -93,6 +98,7 @@ raggo/
 │   │   ├── audio/                # Downloaded audio files
 │   │   ├── transcripts/          # Raw and normalized transcripts
 │   │   ├── chunks/               # Text chunks (JSONL)
+│   │   ├── contexts/             # Chunk contexts (JSONL) + synopses
 │   │   ├── embeddings/           # Vector embeddings (JSONL)
 │   │   └── index/                # Index completion markers
 │   │
@@ -100,8 +106,13 @@ raggo/
 │       ├── sources/              # Source document files
 │       ├── extracted/            # Extracted text
 │       ├── chunks/               # Text chunks (JSONL)
+│       ├── contexts/             # Chunk contexts (JSONL) + synopses
 │       ├── embeddings/           # Vector embeddings (JSONL)
 │       └── index/                # Index completion markers
+│
+├── examples/                     # Query-side examples (hybrid search + rerank)
+│   ├── open-webui/               # Open WebUI Workspace Tool
+│   └── open-webui-computer/      # CLI + skill for Open WebUI Computer agents
 │
 ├── scripts/                      # Helper utilities (optional)
 │   ├── clean-episode.sh          # Clean episode artifacts
@@ -135,10 +146,32 @@ The podcast pipeline follows a linear sequence of transformations:
 3. **Speech-to-Text** (external service) → Produces: `transcripts/*.json`
 4. **Normalization** → Produces: `transcripts/*.normalized.json`
 5. **Chunking** → Produces: `chunks/*.jsonl`
-6. **Embedding** (external service) → Produces: `embeddings/*.jsonl`
-7. **Indexing** → Produces: `index/*.done` markers, upserts to Qdrant
+6. **Contextualization** (external LLM, optional) → Produces: `contexts/*.jsonl`, `contexts/*.synopsis.json`
+7. **Embedding** (external service) → Produces: `embeddings/*.jsonl`
+8. **Indexing** → Produces: `index/*.done` markers, upserts to Qdrant
+
+The document pipeline follows the same shape: scan → extract → chunk → contextualize → embed → index.
 
 Each stage only knows about its input and output file locations. Dependencies are managed by the orchestrator, which executes stages sequentially with automatic retry on failure.
+
+## Contextual Retrieval
+
+raggo implements the ingestion half of Anthropic's [Contextual Retrieval](https://www.anthropic.com/engineering/contextual-retrieval). An LLM writes a short passage that situates each chunk within its source. That passage is prepended to the chunk before embedding, and the same text goes into a BM25 sparse vector.
+
+**Designed for small local models.** The article puts the whole document in every prompt. raggo instead works within `context_budget_chars`:
+
+- **Full mode**: if the document fits the budget, the prompt prefix is the whole document, exactly as in the article.
+- **Windowed mode**: larger documents get a synopsis built once by map-reduce over budget-sized windows and cached in `contexts/<id>.synopsis.json`. Each group of consecutive chunks then gets `synopsis + local excerpt` as its prefix.
+
+In both modes chunks are processed in order and the chunk goes last in the prompt. Consecutive calls therefore share a byte-identical prefix, and llama-server (`cache_prompt`) reuses its KV cache, so each call only processes the chunk plus about 100 output tokens.
+
+**Model swaps.** When run without `-document-id`/`-episode-id`, the contextualize binaries process every chunk file that lacks contexts. Contextualization for a whole corpus therefore finishes before embedding starts, and llama-swap swaps at most once per run. A small context model can share a llama-swap group with the embedder and never swap.
+
+**Qdrant layout** (`pkg/vectorstore`): each point has a named `dense` vector (cosine) and a sparse `bm25` vector with the IDF modifier. BM25 is computed by Qdrant itself (`qdrant/bm25` inference, Qdrant ≥ 1.15.2), so any client can query it with plain text. The payload keeps the raw `text` and adds `context` and `chunk_index`. Collections created before this layout are rejected with an error rather than migrated; delete them or use a new collection name, then re-index.
+
+**Query side** (not part of the pipeline): run hybrid retrieval (dense + bm25 prefetch, RRF fusion), then rerank. See `examples/` for an Open WebUI Tool and an Open WebUI Computer skill that do this.
+
+**Opting out**: set `contextualize: false` on a corpus, or leave `services.context_endpoint` empty. Embed and index fall back to raw chunks when no context file exists.
 
 ## Naming Conventions
 

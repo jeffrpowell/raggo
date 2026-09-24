@@ -35,3 +35,6 @@ data/filesystem/
 # OS
 .DS_Store
 Thumbs.db
+
+# Python (examples/)
+__pycache__/

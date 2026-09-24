@@ -36,12 +36,14 @@ func expandPaths(cfg *Config) error {
 	cfg.Storage.Podcast.Audio = expandVar(cfg.Storage.Podcast.Audio, "root", root)
 	cfg.Storage.Podcast.Transcripts = expandVar(cfg.Storage.Podcast.Transcripts, "root", root)
 	cfg.Storage.Podcast.Chunks = expandVar(cfg.Storage.Podcast.Chunks, "root", root)
+	cfg.Storage.Podcast.Contexts = expandVar(cfg.Storage.Podcast.Contexts, "root", root)
 	cfg.Storage.Podcast.Embeddings = expandVar(cfg.Storage.Podcast.Embeddings, "root", root)
 	cfg.Storage.Podcast.Index = expandVar(cfg.Storage.Podcast.Index, "root", root)
 
 	cfg.Storage.Documents.Sources = expandVar(cfg.Storage.Documents.Sources, "root", root)
 	cfg.Storage.Documents.Text = expandVar(cfg.Storage.Documents.Text, "root", root)
 	cfg.Storage.Documents.Chunks = expandVar(cfg.Storage.Documents.Chunks, "root", root)
+	cfg.Storage.Documents.Contexts = expandVar(cfg.Storage.Documents.Contexts, "root", root)
 	cfg.Storage.Documents.Embeddings = expandVar(cfg.Storage.Documents.Embeddings, "root", root)
 	cfg.Storage.Documents.Index = expandVar(cfg.Storage.Documents.Index, "root", root)
 
