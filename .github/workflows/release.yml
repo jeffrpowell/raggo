@@ -63,9 +63,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${
-            secrets.GITHUB_TOKEN
-          }
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
@@ -95,3 +93,25 @@ jobs:
           TAGS: ${{ steps.meta.outputs.tags }}
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
         run: echo "$TAGS" | xargs -I {} cosign sign --yes {}@$DIGEST
+  # update_version:
+  #   needs: build_and_push
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: write
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v3
+  #       with: 
+  #         ref: 'main'
+
+  #     - name: Update version in code files
+  #       run: |
+  #         sed -i "s/raggo:v[0-9]+\.[0-9]+(\.[0-9]+)?/raggo:${{ github.ref_name }}/g" -E README.md
+
+  #     - name: Commit version changes
+  #       run: |
+  #         git config --global user.name "github-actions[bot]"
+  #         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  #         git add README.md
+  #         git commit -m "Bump version in README.md to ${{ github.ref_name }}"
+  #         git push origin main
