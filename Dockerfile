@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/raggo-orchestrator ./cmd/raggo-orc
     CGO_ENABLED=0 GOOS=linux go build -o /bin/raggo-embed-podcast ./cmd/raggo-embed-podcast && \
     CGO_ENABLED=0 GOOS=linux go build -o /bin/raggo-index-podcast ./cmd/raggo-index-podcast && \
     CGO_ENABLED=0 GOOS=linux go build -o /bin/raggo-scan-documents ./cmd/raggo-scan-documents && \
-    CGO_ENABLED=0 GOOS=linux go build -o /bin/raggo-extract-text ./cmd/raggo-extract-text && \
+    CGO_ENABLED=1 GOOS=linux go build -o /bin/raggo-extract-text ./cmd/raggo-extract-text && \
     CGO_ENABLED=0 GOOS=linux go build -o /bin/raggo-chunk-text ./cmd/raggo-chunk-text && \
     CGO_ENABLED=0 GOOS=linux go build -o /bin/raggo-contextualize-text ./cmd/raggo-contextualize-text && \
     CGO_ENABLED=0 GOOS=linux go build -o /bin/raggo-embed-text ./cmd/raggo-embed-text && \
