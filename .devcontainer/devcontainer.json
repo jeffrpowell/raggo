@@ -1,6 +1,8 @@
 {
 	"name": "Raggo Go Development",
-	"image": "mcr.microsoft.com/devcontainers/go:1.27-trixie",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "app",
+	"workspaceFolder": "/workspaces/raggo",
 	"features": {
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {
 			"moby": false
@@ -11,7 +13,6 @@
 			"upgradePackages": true
 		}
 	},
-
 	"customizations": {
 		"vscode": {
 			"extensions": [
@@ -35,8 +36,11 @@
 			}
 		}
 	},
-
-	"forwardPorts": [6333, 6334, 9998],
+	"forwardPorts": [
+		6333,
+		6334,
+		9998
+	],
 	"portsAttributes": {
 		"6333": {
 			"label": "Qdrant HTTP",
@@ -51,11 +55,11 @@
 			"onAutoForward": "notify"
 		}
 	},
-
-	"postCreateCommand": "make install-deps && make build",
-
+	"postCreateCommand": "go mod download && ./scripts/build.sh bin",
+	"containerEnv": {
+		"CGO_ENABLED": "1"
+	},
 	"remoteUser": "vscode",
-	
 	"mounts": [
 		"source=${localWorkspaceFolder}/data,target=${containerWorkspaceFolder}/data,type=bind,consistency=cached"
 	]
