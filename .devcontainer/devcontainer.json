@@ -1,9 +1,10 @@
 {
 	"name": "Raggo Go Development",
-	"image": "mcr.microsoft.com/devcontainers/go:1.25-bookworm",
-	
+	"image": "mcr.microsoft.com/devcontainers/go:1.27-trixie",
 	"features": {
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"moby": false
+		},
 		"ghcr.io/devcontainers/features/common-utils:2": {
 			"installZsh": true,
 			"installOhMyZsh": true,

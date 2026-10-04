@@ -1,6 +1,6 @@
 module github.com/jeffrpowell/raggo
 
-go 1.25.6
+go 1.27.1
 
 require (
 	github.com/gen2brain/go-fitz v1.23.7
