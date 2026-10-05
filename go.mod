@@ -6,7 +6,7 @@ require (
 	github.com/gen2brain/go-fitz v1.23.7
 	github.com/google/uuid v1.6.0
 	github.com/mmcdole/gofeed v1.2.1
-	github.com/qdrant/go-client v1.16.2
+	github.com/qdrant/go-client v1.19.1
 	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/yaml.v3 v3.0.1
 )
