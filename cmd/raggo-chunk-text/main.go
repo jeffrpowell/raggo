@@ -137,7 +137,11 @@ func createTextChunks(documentID, text string, chunkSize, overlapSize int) []sch
 
 		chunks = append(chunks, chunk)
 		chunkIndex++
-		
+
+		if end >= len(text) {
+			break
+		}
+
 		position = end - overlapSize
 		if position < 0 {
 			position = end
