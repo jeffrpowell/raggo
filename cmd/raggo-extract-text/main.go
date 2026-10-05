@@ -182,11 +182,12 @@ func extractWithTika(log *logging.Logger, cfg extractConfig) (*extractionResult,
 		return nil, fmt.Errorf("tika extraction failed: %w\nEnsure Tika is running at %s", err, cfg.tikaEndpoint)
 	}
 
+	pageCount := tika.ExtractPageCount(tikaResult.Metadata)
 	result := &extractionResult{
-		Text:         strings.TrimSpace(tikaResult.Text),
+		Text:         tika.CleanText(tikaResult.Text, pageCount),
 		Extractor:    "tika",
 		TikaMetadata: tikaResult.Metadata,
-		PageCount:    tika.ExtractPageCount(tikaResult.Metadata),
+		PageCount:    pageCount,
 		ImageCount:   tika.ExtractImageCount(tikaResult.Metadata),
 	}
 

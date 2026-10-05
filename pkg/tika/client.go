@@ -2,6 +2,7 @@ package tika
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,34 +31,20 @@ func NewClient(endpoint string) *Client {
 	}
 }
 
+// errNoPlainText means the endpoint exists in another Tika version but does
+// not serve plain text in this one.
+var errNoPlainText = errors.New("endpoint does not serve plain text")
+
 func (c *Client) ExtractText(filePath string) (*ExtractionResult, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("open file: %w", err)
+	// Tika 4 serves plain text at /tika/text; bare /tika ignores Accept and
+	// returns Markdown. Tika 3 only serves JSON under /tika/{handler}, so fall
+	// back to the Accept-routed bare /tika there.
+	text, err := c.putText(filePath, "/tika/text")
+	if errors.Is(err, errNoPlainText) {
+		text, err = c.putText(filePath, "/tika")
 	}
-	defer file.Close()
-
-	url := fmt.Sprintf("%s/tika", c.endpoint)
-	req, err := http.NewRequest("PUT", url, file)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Accept", "text/plain")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("tika request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("tika returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	text, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
+		return nil, err
 	}
 
 	metadata, err := c.extractMetadata(filePath)
@@ -66,9 +53,47 @@ func (c *Client) ExtractText(filePath string) (*ExtractionResult, error) {
 	}
 
 	return &ExtractionResult{
-		Text:     string(text),
+		Text:     text,
 		Metadata: metadata,
 	}, nil
+}
+
+func (c *Client) putText(filePath, path string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("open file: %w", err)
+	}
+	defer file.Close()
+
+	req, err := http.NewRequest("PUT", c.endpoint+path, file)
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "text/plain")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("tika request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotAcceptable, http.StatusUnsupportedMediaType:
+		return "", fmt.Errorf("%s: status %d: %w", path, resp.StatusCode, errNoPlainText)
+	default:
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("tika returned status %d: %s", resp.StatusCode, string(body))
+	}
+	if strings.Contains(resp.Header.Get("Content-Type"), "json") {
+		return "", fmt.Errorf("%s: got %s: %w", path, resp.Header.Get("Content-Type"), errNoPlainText)
+	}
+
+	text, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+	return string(text), nil
 }
 
 func (c *Client) extractMetadata(filePath string) (map[string]interface{}, error) {
