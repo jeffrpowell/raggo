@@ -21,8 +21,15 @@ qdrant:
   host: qdrant                        # Qdrant server hostname
   port: 6334                          # Qdrant gRPC port (6333 for HTTP)
   metadata_collection: raggo_metadata # Collection for orchestrator state tracking
+  # api_key: ""                       # Or set RAGGO_QDRANT_API_KEY (e.g. in .env)
 
 services:
+  # API keys: every endpoint below accepts an optional <service>_api_key
+  # (stt_api_key, embed_api_key, context_api_key, tika_api_key, vision_api_key),
+  # sent as "Authorization: Bearer <key>". Keep secrets out of this file by
+  # leaving them unset and using RAGGO_<SERVICE>_API_KEY env vars instead;
+  # docker-compose.orchestrator.yml loads them from .env (see .env.example).
+
   # Speech-to-text service for podcast transcription
   stt_endpoint: http://stt-service:8000/transcribe
   stt_model: whisper-1                # STT model name (optional)
@@ -57,8 +64,10 @@ services:
   context_model: qwen3.5-4b
   context_budget_chars: 12000
 
-  # Apache Tika for document text extraction
-  tika_endpoint: http://tika-service:9998
+  # Apache Tika extracts text from PDF and Office files (.txt/.md are read
+  # directly). Matches the tika service in docker-compose.orchestrator.yml.
+  # Defaults to http://localhost:9998 when unset.
+  tika_endpoint: http://tika:9998
   
   # Vision API for PDF OCR (optional, for scanned PDFs)
   vision_endpoint: ""                 # Leave empty to skip OCR

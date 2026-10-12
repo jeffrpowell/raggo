@@ -79,7 +79,7 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 		handler(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	return NewClient(srv.URL)
+	return NewClient(srv.URL, "")
 }
 
 func writeTestFile(t *testing.T) string {
@@ -88,4 +88,27 @@ func writeTestFile(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestExtractTextSendsBearerOnEveryRequest(t *testing.T) {
+	var unauthed []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tk" {
+			unauthed = append(unauthed, r.URL.Path)
+		}
+		if r.URL.Path == "/meta" {
+			w.Write([]byte(`{}`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte("text"))
+	}))
+	defer srv.Close()
+
+	if _, err := NewClient(srv.URL, "tk").ExtractText(writeTestFile(t)); err != nil {
+		t.Fatal(err)
+	}
+	if len(unauthed) > 0 {
+		t.Errorf("requests without bearer token: %v", unauthed)
+	}
 }

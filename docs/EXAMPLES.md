@@ -167,6 +167,19 @@ environment:
   - TZ=America/Denver                   # Timezone for scheduled jobs
 ```
 
+**Service API keys:** each is used only when the matching `*_api_key` in
+`raggo.yml` is empty. `docker-compose.orchestrator.yml` loads them from `.env`
+(copy `.env.example`).
+
+| Variable | Service | Sent as |
+|---|---|---|
+| `RAGGO_STT_API_KEY` | `stt_endpoint` | `Authorization: Bearer` |
+| `RAGGO_EMBED_API_KEY` | `embed_endpoint` | `Authorization: Bearer` |
+| `RAGGO_CONTEXT_API_KEY` | `context_endpoint` | `Authorization: Bearer` |
+| `RAGGO_VISION_API_KEY` | vision OCR endpoint | `Authorization: Bearer` |
+| `RAGGO_TIKA_API_KEY` | Tika (behind an auth proxy) | `Authorization: Bearer` |
+| `RAGGO_QDRANT_API_KEY` | Qdrant | Qdrant `api-key` |
+
 ### 8. Monitoring and Logging
 
 **View orchestrator logs:**

@@ -18,7 +18,7 @@ func TestCompleteSendsCacheAndThinkingFlags(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	out, err := NewClient(srv.URL, "qwen3.5-4b", 150, true).Complete(context.Background(), "sys", "user")
+	out, err := NewClient(srv.URL, "", "qwen3.5-4b", 150, true).Complete(context.Background(), "sys", "user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,24 @@ func TestCompleteReturnsHTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := NewClient(srv.URL, "m", 10, false).Complete(context.Background(), "s", "u"); err == nil {
+	if _, err := NewClient(srv.URL, "", "m", 10, false).Complete(context.Background(), "s", "u"); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestCompleteSendsBearerOnlyWhenKeySet(t *testing.T) {
+	for key, want := range map[string]string{"": "", "sk-test": "Bearer sk-test"} {
+		var got string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got = r.Header.Get("Authorization")
+			w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+		}))
+		if _, err := NewClient(srv.URL, key, "m", 10, false).Complete(context.Background(), "s", "u"); err != nil {
+			t.Fatal(err)
+		}
+		srv.Close()
+		if got != want {
+			t.Errorf("key %q: Authorization = %q, want %q", key, got, want)
+		}
 	}
 }

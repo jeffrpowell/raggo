@@ -38,3 +38,6 @@ Thumbs.db
 
 # Python (examples/)
 __pycache__/
+
+# Secrets for docker compose (see .env.example)
+.env

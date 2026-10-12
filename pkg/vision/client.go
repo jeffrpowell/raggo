@@ -16,6 +16,7 @@ import (
 
 type Client struct {
 	endpoint   string
+	apiKey     string
 	model      string
 	prompt     string
 	httpClient *http.Client
@@ -60,9 +61,10 @@ type OpenAIError struct {
 	Type    string `json:"type"`
 }
 
-func NewClient(endpoint, model, prompt string) *Client {
+func NewClient(endpoint, apiKey, model, prompt string) *Client {
 	return &Client{
 		endpoint: endpoint,
+		apiKey:   apiKey,
 		model:    model,
 		prompt:   prompt,
 		httpClient: &http.Client{
@@ -140,6 +142,9 @@ func (c *Client) ExtractTextFromImage(img image.Image) (string, error) {
 		return "", fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -199,6 +204,9 @@ func (c *Client) Ping() error {
 		return fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {

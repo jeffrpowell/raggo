@@ -14,6 +14,7 @@ import (
 
 type Client struct {
 	endpoint   string
+	apiKey     string
 	httpClient *http.Client
 }
 
@@ -22,13 +23,23 @@ type ExtractionResult struct {
 	Metadata map[string]interface{}
 }
 
-func NewClient(endpoint string) *Client {
+func NewClient(endpoint, apiKey string) *Client {
 	return &Client{
 		endpoint: endpoint,
+		apiKey:   apiKey,
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
 	}
+}
+
+// do sends req with the API key, if one is set. Tika has no auth of its own,
+// so the key is only useful behind a proxy that checks a bearer token.
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	return c.httpClient.Do(req)
 }
 
 // errNoPlainText means the endpoint exists in another Tika version but does
@@ -71,7 +82,7 @@ func (c *Client) putText(filePath, path string) (string, error) {
 	}
 	req.Header.Set("Accept", "text/plain")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return "", fmt.Errorf("tika request failed: %w", err)
 	}
@@ -110,7 +121,7 @@ func (c *Client) extractMetadata(filePath string) (map[string]interface{}, error
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("metadata request failed: %w", err)
 	}
@@ -131,7 +142,11 @@ func (c *Client) extractMetadata(filePath string) (map[string]interface{}, error
 
 func (c *Client) Ping() error {
 	url := fmt.Sprintf("%s/tika", c.endpoint)
-	resp, err := c.httpClient.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return fmt.Errorf("ping failed: %w", err)
 	}

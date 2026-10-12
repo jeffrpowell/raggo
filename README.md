@@ -62,13 +62,16 @@ cp config/raggo.example.yml config/raggo.yml
 # - Configure STT and embedding endpoints
 # - Choose mode: one-shot, scheduled, or watch
 
-# 3. Start orchestrator and Qdrant
+# 3. (Optional) API keys for endpoints that require auth
+cp .env.example .env   # then fill in RAGGO_*_API_KEY values
+
+# 4. Start orchestrator and Qdrant
 docker compose -f docker-compose.orchestrator.yml up -d
 
-# 4. Monitor progress
+# 5. Monitor progress
 docker compose -f docker-compose.orchestrator.yml logs -f raggo
 
-# 5. Query indexed data
+# 6. Query indexed data
 curl http://localhost:6333/collections/my-podcast
 ```
 
@@ -82,7 +85,7 @@ curl http://localhost:6333/collections/my-podcast
 The orchestrator uses a single `raggo.yml` file with:
 - **Storage paths** - Configure where artifacts are stored
 - **Qdrant connection** - Host, port, metadata collection
-- **External services** - STT and embedding endpoints  
+- **External services** - STT and embedding endpoints, plus optional API keys (or `RAGGO_*_API_KEY` env vars)
 - **Orchestrator settings** - Retry limits, log directory
 - **Corpora definitions** - Multi-corpus with different modes
 

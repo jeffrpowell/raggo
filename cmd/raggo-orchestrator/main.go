@@ -26,6 +26,8 @@ func main() {
 
 	logger := logging.New("raggo-orchestrator")
 
+	cfg.Qdrant.APIKey = config.ResolveQdrantAPIKey(cfg)
+
 	stateManager, err := state.NewQdrantStateManager(cfg.Qdrant)
 	if err != nil {
 		log.Fatalf("Init state manager: %v", err)

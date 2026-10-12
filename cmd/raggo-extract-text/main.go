@@ -27,7 +27,9 @@ type extractConfig struct {
 	filePath       string
 	textDir        string
 	tikaEndpoint   string
+	tikaAPIKey     string
 	visionEndpoint string
+	visionAPIKey   string
 	visionModel    string
 	visionPrompt   string
 }
@@ -44,7 +46,7 @@ func main() {
 	flag.StringVar(&ecfg.documentID, "document-id", "", "Document ID")
 	flag.StringVar(&ecfg.filePath, "file-path", "", "Path to document file")
 	flag.StringVar(&ecfg.textDir, "text-dir", "data/documents/text", "Directory for extracted text")
-	flag.StringVar(&ecfg.tikaEndpoint, "tika-endpoint", "http://localhost:9998", "Tika HTTP endpoint")
+	flag.StringVar(&ecfg.tikaEndpoint, "tika-endpoint", "", "Tika HTTP endpoint (default from config, else http://localhost:9998)")
 	flag.StringVar(&ecfg.visionEndpoint, "vision-endpoint", "", "OpenAI-compatible vision API endpoint")
 	flag.StringVar(&ecfg.visionModel, "vision-model", "gpt-4o", "Vision model name")
 	flag.StringVar(&ecfg.visionPrompt, "vision-prompt", defaultVisionPrompt, "Vision extraction prompt")
@@ -62,6 +64,9 @@ func main() {
 	}
 
 	ecfg.textDir = config.ResolveDocumentsTextDir(cfg, corpusID, ecfg.textDir)
+	ecfg.tikaEndpoint = config.ResolveTikaEndpoint(cfg, ecfg.tikaEndpoint)
+	ecfg.tikaAPIKey = config.ResolveTikaAPIKey(cfg)
+	ecfg.visionAPIKey = config.ResolveVisionAPIKey(cfg)
 
 	if ecfg.documentID == "" {
 		log.Fatal("document-id is required")
@@ -173,7 +178,7 @@ func extractText(log *logging.Logger, cfg extractConfig, ext string) (*extractio
 }
 
 func extractWithTika(log *logging.Logger, cfg extractConfig) (*extractionResult, error) {
-	tikaClient := tika.NewClient(cfg.tikaEndpoint)
+	tikaClient := tika.NewClient(cfg.tikaEndpoint, cfg.tikaAPIKey)
 	
 	log.Info("Attempting Tika extraction from: %s", cfg.tikaEndpoint)
 	
@@ -204,7 +209,7 @@ func extractWithTika(log *logging.Logger, cfg extractConfig) (*extractionResult,
 			return result, nil
 		}
 		
-		visionClient := vision.NewClient(cfg.visionEndpoint, cfg.visionModel, cfg.visionPrompt)
+		visionClient := vision.NewClient(cfg.visionEndpoint, cfg.visionAPIKey, cfg.visionModel, cfg.visionPrompt)
 		
 		ocrText, err := visionClient.ExtractTextFromPDF(cfg.filePath)
 		if err != nil {

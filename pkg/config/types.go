@@ -37,14 +37,21 @@ type QdrantConfig struct {
 	Host               string `yaml:"host"`
 	Port               int    `yaml:"port"`
 	MetadataCollection string `yaml:"metadata_collection"`
+	APIKey             string `yaml:"api_key"`
 }
 
 type ServicesConfig struct {
 	STTEndpoint        string `yaml:"stt_endpoint"`
+	STTAPIKey          string `yaml:"stt_api_key"`
 	EmbedEndpoint      string `yaml:"embed_endpoint"`
+	EmbedAPIKey        string `yaml:"embed_api_key"`
 	ContextEndpoint    string `yaml:"context_endpoint"`
+	ContextAPIKey      string `yaml:"context_api_key"`
 	ContextModel       string `yaml:"context_model"`
 	ContextBudgetChars int    `yaml:"context_budget_chars"`
+	TikaEndpoint       string `yaml:"tika_endpoint"`
+	TikaAPIKey         string `yaml:"tika_api_key"`
+	VisionAPIKey       string `yaml:"vision_api_key"`
 }
 
 type OrchestratorConfig struct {

@@ -80,7 +80,7 @@ func main() {
 		log.Info("Found %d episodes pending contextualization", len(ids))
 	}
 
-	client := llm.NewClient(contextEndpoint, contextModel, maxTokens, disableThinking)
+	client := llm.NewClient(contextEndpoint, config.ResolveContextAPIKey(cfg), contextModel, maxTokens, disableThinking)
 	for _, id := range ids {
 		if err := run(log, client, id, manifestDir, chunkDir, contextDir, budgetChars); err != nil {
 			log.Fatal("Failed %s: %v", id, err)

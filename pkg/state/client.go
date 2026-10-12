@@ -18,8 +18,9 @@ type QdrantStateManager struct {
 
 func NewQdrantStateManager(cfg config.QdrantConfig) (*QdrantStateManager, error) {
 	client, err := qdrant.NewClient(&qdrant.Config{
-		Host: cfg.Host,
-		Port: cfg.Port,
+		Host:   cfg.Host,
+		Port:   cfg.Port,
+		APIKey: cfg.APIKey,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("connect to qdrant: %w", err)

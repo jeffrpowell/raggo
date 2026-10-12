@@ -1,5 +1,7 @@
 package config
 
+import "os"
+
 func ResolveAudioDir(cfg *Config, corpusID, flagOverride string) string {
 	if flagOverride != "" {
 		return flagOverride
@@ -188,4 +190,72 @@ func ResolveContextBudgetChars(cfg *Config, flagOverride int) int {
 		return cfg.Services.ContextBudgetChars
 	}
 	return 12000
+}
+
+func ResolveTikaEndpoint(cfg *Config, flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	if cfg != nil && cfg.Services.TikaEndpoint != "" {
+		return cfg.Services.TikaEndpoint
+	}
+	return "http://localhost:9998"
+}
+
+// API keys have no flag override so they stay out of process listings and
+// the orchestrator's logged stage args. A key set in config wins; otherwise
+// the env var is used (e.g. from a compose .env file). Empty means no auth.
+func resolveAPIKey(configValue, envVar string) string {
+	if configValue != "" {
+		return configValue
+	}
+	return os.Getenv(envVar)
+}
+
+func ResolveSTTAPIKey(cfg *Config) string {
+	var v string
+	if cfg != nil {
+		v = cfg.Services.STTAPIKey
+	}
+	return resolveAPIKey(v, "RAGGO_STT_API_KEY")
+}
+
+func ResolveEmbedAPIKey(cfg *Config) string {
+	var v string
+	if cfg != nil {
+		v = cfg.Services.EmbedAPIKey
+	}
+	return resolveAPIKey(v, "RAGGO_EMBED_API_KEY")
+}
+
+func ResolveContextAPIKey(cfg *Config) string {
+	var v string
+	if cfg != nil {
+		v = cfg.Services.ContextAPIKey
+	}
+	return resolveAPIKey(v, "RAGGO_CONTEXT_API_KEY")
+}
+
+func ResolveTikaAPIKey(cfg *Config) string {
+	var v string
+	if cfg != nil {
+		v = cfg.Services.TikaAPIKey
+	}
+	return resolveAPIKey(v, "RAGGO_TIKA_API_KEY")
+}
+
+func ResolveVisionAPIKey(cfg *Config) string {
+	var v string
+	if cfg != nil {
+		v = cfg.Services.VisionAPIKey
+	}
+	return resolveAPIKey(v, "RAGGO_VISION_API_KEY")
+}
+
+func ResolveQdrantAPIKey(cfg *Config) string {
+	var v string
+	if cfg != nil {
+		v = cfg.Qdrant.APIKey
+	}
+	return resolveAPIKey(v, "RAGGO_QDRANT_API_KEY")
 }

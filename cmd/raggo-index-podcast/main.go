@@ -65,17 +65,18 @@ func main() {
 	indexDir = config.ResolveIndexDir(cfg, corpusID, indexDir)
 	qdrantHost = config.ResolveQdrantHost(cfg, qdrantHost)
 	qdrantPort = config.ResolveQdrantPort(cfg, qdrantPort)
+	qdrantAPIKey := config.ResolveQdrantAPIKey(cfg)
 
 	if episodeID == "" {
 		log.Fatal("episode-id is required")
 	}
 
-	if err := run(log, episodeID, chunkDir, contextDir, embeddingDir, indexDir, qdrantHost, qdrantPort, collection, corpus, sourceType); err != nil {
+	if err := run(log, episodeID, chunkDir, contextDir, embeddingDir, indexDir, qdrantHost, qdrantPort, qdrantAPIKey, collection, corpus, sourceType); err != nil {
 		log.Fatal("Failed: %v", err)
 	}
 }
 
-func run(log *logging.Logger, episodeID, chunkDir, contextDir, embeddingDir, indexDir, qdrantHost string, qdrantPort int, collection, corpus, sourceType string) error {
+func run(log *logging.Logger, episodeID, chunkDir, contextDir, embeddingDir, indexDir, qdrantHost string, qdrantPort int, qdrantAPIKey, collection, corpus, sourceType string) error {
 	markerPath := filepath.Join(indexDir, fmt.Sprintf("%s.done", episodeID))
 
 	if storage.MarkerExists(markerPath) {
@@ -124,8 +125,9 @@ func run(log *logging.Logger, episodeID, chunkDir, contextDir, embeddingDir, ind
 	log.Info("Indexing %d chunks into Qdrant", len(chunks))
 
 	client, err := qdrant.NewClient(&qdrant.Config{
-		Host: qdrantHost,
-		Port: qdrantPort,
+		Host:   qdrantHost,
+		Port:   qdrantPort,
+		APIKey: qdrantAPIKey,
 	})
 	if err != nil {
 		return fmt.Errorf("connect to qdrant: %w", err)

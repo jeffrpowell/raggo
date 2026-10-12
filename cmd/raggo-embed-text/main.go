@@ -69,17 +69,18 @@ func main() {
 	contextDir = config.ResolveDocumentsContextsDir(cfg, corpusID, contextDir)
 	embeddingDir = config.ResolveDocumentsEmbeddingsDir(cfg, corpusID, embeddingDir)
 	embedEndpoint = config.ResolveEmbedEndpoint(cfg, embedEndpoint)
+	embedAPIKey := config.ResolveEmbedAPIKey(cfg)
 
 	if documentID == "" {
 		log.Fatal("document-id is required")
 	}
 
-	if err := run(log, documentID, chunkDir, contextDir, embeddingDir, embedEndpoint, model, modelVersion); err != nil {
+	if err := run(log, documentID, chunkDir, contextDir, embeddingDir, embedEndpoint, embedAPIKey, model, modelVersion); err != nil {
 		log.Fatal("Failed: %v", err)
 	}
 }
 
-func run(log *logging.Logger, documentID, chunkDir, contextDir, embeddingDir, embedEndpoint, model, modelVersion string) error {
+func run(log *logging.Logger, documentID, chunkDir, contextDir, embeddingDir, embedEndpoint, embedAPIKey, model, modelVersion string) error {
 	chunkPath := filepath.Join(chunkDir, fmt.Sprintf("%s.jsonl", documentID))
 	embeddingPath := filepath.Join(embeddingDir, fmt.Sprintf("%s.jsonl", documentID))
 
@@ -119,7 +120,7 @@ func run(log *logging.Logger, documentID, chunkDir, contextDir, embeddingDir, em
 		chunkContext := contextual.Lookup(contexts, chunk.ChunkID, chunk.TextHash)
 
 		if embedEndpoint != "" {
-			vector, err = generateEmbeddingViaHTTP(embedEndpoint, contextual.EmbeddingText(chunkContext, chunk.Text), model)
+			vector, err = generateEmbeddingViaHTTP(embedEndpoint, embedAPIKey, contextual.EmbeddingText(chunkContext, chunk.Text), model)
 			if err != nil {
 				return fmt.Errorf("generate embedding for chunk %d: %w", i, err)
 			}
@@ -153,7 +154,7 @@ func run(log *logging.Logger, documentID, chunkDir, contextDir, embeddingDir, em
 	return nil
 }
 
-func generateEmbeddingViaHTTP(endpoint, text, model string) ([]float32, error) {
+func generateEmbeddingViaHTTP(endpoint, apiKey, text, model string) ([]float32, error) {
 	reqBody := EmbedRequest{
 		Text:  text,
 		Model: model,
@@ -163,7 +164,16 @@ func generateEmbeddingViaHTTP(endpoint, text, model string) ([]float32, error) {
 		return nil, err
 	}
 
-	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(data))
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

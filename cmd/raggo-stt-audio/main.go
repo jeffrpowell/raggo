@@ -62,17 +62,18 @@ func main() {
 
 	transcriptDir = config.ResolveTranscriptsDir(cfg, corpusID, transcriptDir)
 	sttEndpoint = config.ResolveSTTEndpoint(cfg, sttEndpoint)
+	sttAPIKey := config.ResolveSTTAPIKey(cfg)
 
 	if episodeID == "" || audioPath == "" {
 		log.Fatal("episode-id and audio-path are required")
 	}
 
-	if err := run(log, episodeID, audioPath, transcriptDir, sttEndpoint, model, modelVersion); err != nil {
+	if err := run(log, episodeID, audioPath, transcriptDir, sttEndpoint, sttAPIKey, model, modelVersion); err != nil {
 		log.Fatal("Failed: %v", err)
 	}
 }
 
-func run(log *logging.Logger, episodeID, audioPath, transcriptDir, sttEndpoint, model, modelVersion string) error {
+func run(log *logging.Logger, episodeID, audioPath, transcriptDir, sttEndpoint, sttAPIKey, model, modelVersion string) error {
 	transcriptPath := filepath.Join(transcriptDir, fmt.Sprintf("%s.json", episodeID))
 
 	if storage.MarkerExists(transcriptPath) {
@@ -90,7 +91,7 @@ func run(log *logging.Logger, episodeID, audioPath, transcriptDir, sttEndpoint, 
 	var segments []schema.TranscriptSegment
 
 	if sttEndpoint != "" {
-		segments, err = transcribeViaHTTP(sttEndpoint, audioPath)
+		segments, err = transcribeViaHTTP(sttEndpoint, sttAPIKey, audioPath)
 		if err != nil {
 			return fmt.Errorf("stt via http: %w", err)
 		}
@@ -122,14 +123,23 @@ func run(log *logging.Logger, episodeID, audioPath, transcriptDir, sttEndpoint, 
 	return nil
 }
 
-func transcribeViaHTTP(endpoint, audioPath string) ([]schema.TranscriptSegment, error) {
+func transcribeViaHTTP(endpoint, apiKey, audioPath string) ([]schema.TranscriptSegment, error) {
 	reqBody := STTRequest{AudioPath: audioPath}
 	data, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(data))
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

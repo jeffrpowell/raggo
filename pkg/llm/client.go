@@ -14,6 +14,7 @@ import (
 // llama.cpp's llama-server (prompt caching, chat template kwargs).
 type Client struct {
 	endpoint        string
+	apiKey          string
 	model           string
 	maxTokens       int
 	disableThinking bool
@@ -48,9 +49,10 @@ type ChatError struct {
 	Type    string `json:"type"`
 }
 
-func NewClient(endpoint, model string, maxTokens int, disableThinking bool) *Client {
+func NewClient(endpoint, apiKey, model string, maxTokens int, disableThinking bool) *Client {
 	return &Client{
 		endpoint:        endpoint,
+		apiKey:          apiKey,
 		model:           model,
 		maxTokens:       maxTokens,
 		disableThinking: disableThinking,
@@ -92,6 +94,9 @@ func (c *Client) Complete(ctx context.Context, system, user string) (string, err
 		return "", fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
