@@ -229,8 +229,8 @@ Want to use a different STT or embedding service?
 **Option 1**: Update service endpoints in `raggo.yml`:
 ```yaml
 services:
-  stt_endpoint: http://your-stt-service:8000/transcribe
-  embed_endpoint: http://your-embed-service:8001/embed
+  stt_endpoint: http://your-stt-service:8000/v1/audio/transcriptions
+  embed_endpoint: http://your-embed-service:8001/v1/embeddings
 ```
 
 **Option 2**: Wrap your service in an HTTP API matching the expected request/response format (see `docs/EXAMPLES.md` for API specs)

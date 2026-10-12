@@ -1,12 +1,8 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"path/filepath"
 	"time"
 
@@ -15,17 +11,8 @@ import (
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
 	"github.com/jeffrpowell/raggo/pkg/storage"
+	"github.com/jeffrpowell/raggo/pkg/stt"
 )
-
-type STTRequest struct {
-	AudioPath string `json:"audio_path"`
-}
-
-type STTResponse struct {
-	Segments []schema.TranscriptSegment `json:"segments"`
-	Model    string                     `json:"model"`
-	Version  string                     `json:"version"`
-}
 
 func main() {
 	var (
@@ -35,6 +22,7 @@ func main() {
 		audioPath     string
 		transcriptDir string
 		sttEndpoint   string
+		sttAPI        string
 		model         string
 		modelVersion  string
 	)
@@ -45,7 +33,8 @@ func main() {
 	flag.StringVar(&audioPath, "audio-path", "", "Path to audio file")
 	flag.StringVar(&transcriptDir, "transcript-dir", "data/transcripts", "Directory for transcripts")
 	flag.StringVar(&sttEndpoint, "stt-endpoint", "", "STT service HTTP endpoint (optional)")
-	flag.StringVar(&model, "model", "whisper-1", "STT model name")
+	flag.StringVar(&sttAPI, "stt-api", "", "STT request format: openai or raggo (default openai)")
+	flag.StringVar(&model, "model", "", "STT model name (default whisper-1)")
 	flag.StringVar(&modelVersion, "model-version", "v1", "STT model version")
 	flag.Parse()
 
@@ -63,17 +52,19 @@ func main() {
 	transcriptDir = config.ResolveTranscriptsDir(cfg, corpusID, transcriptDir)
 	sttEndpoint = config.ResolveSTTEndpoint(cfg, sttEndpoint)
 	sttAPIKey := config.ResolveSTTAPIKey(cfg)
+	sttAPI = config.ResolveSTTAPI(cfg, sttAPI)
+	model = config.ResolveSTTModel(cfg, model)
 
 	if episodeID == "" || audioPath == "" {
 		log.Fatal("episode-id and audio-path are required")
 	}
 
-	if err := run(log, episodeID, audioPath, transcriptDir, sttEndpoint, sttAPIKey, model, modelVersion); err != nil {
+	if err := run(log, episodeID, audioPath, transcriptDir, sttEndpoint, sttAPIKey, sttAPI, model, modelVersion); err != nil {
 		log.Fatal("Failed: %v", err)
 	}
 }
 
-func run(log *logging.Logger, episodeID, audioPath, transcriptDir, sttEndpoint, sttAPIKey, model, modelVersion string) error {
+func run(log *logging.Logger, episodeID, audioPath, transcriptDir, sttEndpoint, sttAPIKey, sttAPI, model, modelVersion string) error {
 	transcriptPath := filepath.Join(transcriptDir, fmt.Sprintf("%s.json", episodeID))
 
 	if storage.MarkerExists(transcriptPath) {
@@ -91,7 +82,11 @@ func run(log *logging.Logger, episodeID, audioPath, transcriptDir, sttEndpoint, 
 	var segments []schema.TranscriptSegment
 
 	if sttEndpoint != "" {
-		segments, err = transcribeViaHTTP(sttEndpoint, sttAPIKey, audioPath)
+		client, err := stt.NewClient(sttEndpoint, sttAPIKey, sttAPI, model)
+		if err != nil {
+			return err
+		}
+		segments, err = client.Transcribe(audioPath)
 		if err != nil {
 			return fmt.Errorf("stt via http: %w", err)
 		}
@@ -121,41 +116,6 @@ func run(log *logging.Logger, episodeID, audioPath, transcriptDir, sttEndpoint, 
 
 	log.Info("Wrote transcript: %s (%d segments)", transcriptPath, len(segments))
 	return nil
-}
-
-func transcribeViaHTTP(endpoint, apiKey, audioPath string) ([]schema.TranscriptSegment, error) {
-	reqBody := STTRequest{AudioPath: audioPath}
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(body))
-	}
-
-	var sttResp STTResponse
-	if err := json.NewDecoder(resp.Body).Decode(&sttResp); err != nil {
-		return nil, err
-	}
-
-	return sttResp.Segments, nil
 }
 
 func generatePlaceholderTranscript() []schema.TranscriptSegment {

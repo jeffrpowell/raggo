@@ -1,34 +1,21 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/jeffrpowell/raggo/pkg/config"
 	"github.com/jeffrpowell/raggo/pkg/contextual"
+	"github.com/jeffrpowell/raggo/pkg/embed"
 	"github.com/jeffrpowell/raggo/pkg/hashing"
 	"github.com/jeffrpowell/raggo/pkg/logging"
 	"github.com/jeffrpowell/raggo/pkg/schema"
 	"github.com/jeffrpowell/raggo/pkg/storage"
 )
-
-type EmbedRequest struct {
-	Text  string `json:"text"`
-	Model string `json:"model"`
-}
-
-type EmbedResponse struct {
-	Embedding []float32 `json:"embedding"`
-	Model     string    `json:"model"`
-	Version   string    `json:"version"`
-}
 
 func main() {
 	var (
@@ -39,6 +26,7 @@ func main() {
 		contextDir      string
 		embeddingDir    string
 		embedEndpoint   string
+		embedAPI        string
 		model           string
 		modelVersion    string
 	)
@@ -50,7 +38,8 @@ func main() {
 	flag.StringVar(&contextDir, "context-dir", "", "Directory for chunk contexts (embeds context + chunk when present)")
 	flag.StringVar(&embeddingDir, "embedding-dir", "data/documents/embeddings", "Directory for embeddings")
 	flag.StringVar(&embedEndpoint, "embed-endpoint", "", "Embedding service HTTP endpoint (optional)")
-	flag.StringVar(&model, "model", "text-embedding-3-small", "Embedding model name")
+	flag.StringVar(&embedAPI, "embed-api", "", "Embedding request format: openai or raggo (default openai)")
+	flag.StringVar(&model, "model", "", "Embedding model name (default text-embedding-3-small)")
 	flag.StringVar(&modelVersion, "model-version", "v1", "Embedding model version")
 	flag.Parse()
 
@@ -70,17 +59,19 @@ func main() {
 	embeddingDir = config.ResolveDocumentsEmbeddingsDir(cfg, corpusID, embeddingDir)
 	embedEndpoint = config.ResolveEmbedEndpoint(cfg, embedEndpoint)
 	embedAPIKey := config.ResolveEmbedAPIKey(cfg)
+	embedAPI = config.ResolveEmbedAPI(cfg, embedAPI)
+	model = config.ResolveEmbedModel(cfg, model)
 
 	if documentID == "" {
 		log.Fatal("document-id is required")
 	}
 
-	if err := run(log, documentID, chunkDir, contextDir, embeddingDir, embedEndpoint, embedAPIKey, model, modelVersion); err != nil {
+	if err := run(log, documentID, chunkDir, contextDir, embeddingDir, embedEndpoint, embedAPIKey, embedAPI, model, modelVersion); err != nil {
 		log.Fatal("Failed: %v", err)
 	}
 }
 
-func run(log *logging.Logger, documentID, chunkDir, contextDir, embeddingDir, embedEndpoint, embedAPIKey, model, modelVersion string) error {
+func run(log *logging.Logger, documentID, chunkDir, contextDir, embeddingDir, embedEndpoint, embedAPIKey, embedAPI, model, modelVersion string) error {
 	chunkPath := filepath.Join(chunkDir, fmt.Sprintf("%s.jsonl", documentID))
 	embeddingPath := filepath.Join(embeddingDir, fmt.Sprintf("%s.jsonl", documentID))
 
@@ -114,13 +105,21 @@ func run(log *logging.Logger, documentID, chunkDir, contextDir, embeddingDir, em
 		return fmt.Errorf("remove old embeddings: %w", err)
 	}
 
+	var client *embed.Client
+	if embedEndpoint != "" {
+		client, err = embed.NewClient(embedEndpoint, embedAPIKey, embedAPI, model)
+		if err != nil {
+			return err
+		}
+	}
+
 	for i, chunk := range chunks {
 		var vector []float32
 		var err error
 		chunkContext := contextual.Lookup(contexts, chunk.ChunkID, chunk.TextHash)
 
-		if embedEndpoint != "" {
-			vector, err = generateEmbeddingViaHTTP(embedEndpoint, embedAPIKey, contextual.EmbeddingText(chunkContext, chunk.Text), model)
+		if client != nil {
+			vector, err = client.Embed(contextual.EmbeddingText(chunkContext, chunk.Text))
 			if err != nil {
 				return fmt.Errorf("generate embedding for chunk %d: %w", i, err)
 			}
@@ -152,44 +151,6 @@ func run(log *logging.Logger, documentID, chunkDir, contextDir, embeddingDir, em
 
 	log.Info("Wrote %d embeddings to: %s", len(chunks), embeddingPath)
 	return nil
-}
-
-func generateEmbeddingViaHTTP(endpoint, apiKey, text, model string) ([]float32, error) {
-	reqBody := EmbedRequest{
-		Text:  text,
-		Model: model,
-	}
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(body))
-	}
-
-	var embedResp EmbedResponse
-	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
-		return nil, err
-	}
-
-	return embedResp.Embedding, nil
 }
 
 func generatePlaceholderEmbedding() []float32 {

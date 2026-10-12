@@ -62,3 +62,28 @@ func TestResolveAPIKeyConfigWinsOverEnv(t *testing.T) {
 		t.Errorf("unset key should be empty: %q", got)
 	}
 }
+
+func TestResolveEmbedAndSTTFormat(t *testing.T) {
+	if got := ResolveEmbedAPI(nil, ""); got != "openai" {
+		t.Errorf("embed api default: %q", got)
+	}
+	if got := ResolveSTTModel(&Config{}, ""); got != "whisper-1" {
+		t.Errorf("stt model default: %q", got)
+	}
+	cfg := &Config{}
+	cfg.Services.EmbedAPI = "raggo"
+	cfg.Services.EmbedModel = "embed-qwen3-0.6b"
+	cfg.Services.STTAPI = "openai"
+	if got := ResolveEmbedAPI(cfg, ""); got != "raggo" {
+		t.Errorf("embed api from config: %q", got)
+	}
+	if got := ResolveEmbedModel(cfg, ""); got != "embed-qwen3-0.6b" {
+		t.Errorf("embed model from config: %q", got)
+	}
+	if got := ResolveEmbedModel(cfg, "flag-model"); got != "flag-model" {
+		t.Errorf("flag override ignored: %q", got)
+	}
+	if got := ResolveSTTAPI(cfg, "raggo"); got != "raggo" {
+		t.Errorf("flag override ignored: %q", got)
+	}
+}

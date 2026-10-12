@@ -43,8 +43,12 @@ type QdrantConfig struct {
 type ServicesConfig struct {
 	STTEndpoint        string `yaml:"stt_endpoint"`
 	STTAPIKey          string `yaml:"stt_api_key"`
+	STTAPI             string `yaml:"stt_api"`
+	STTModel           string `yaml:"stt_model"`
 	EmbedEndpoint      string `yaml:"embed_endpoint"`
 	EmbedAPIKey        string `yaml:"embed_api_key"`
+	EmbedAPI           string `yaml:"embed_api"`
+	EmbedModel         string `yaml:"embed_model"`
 	ContextEndpoint    string `yaml:"context_endpoint"`
 	ContextAPIKey      string `yaml:"context_api_key"`
 	ContextModel       string `yaml:"context_model"`

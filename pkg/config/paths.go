@@ -109,7 +109,7 @@ func ResolveSTTEndpoint(cfg *Config, flagOverride string) string {
 	if cfg != nil {
 		return cfg.Services.STTEndpoint
 	}
-	return "http://stt-service:8000/transcribe"
+	return "http://stt-service:8000/v1/audio/transcriptions"
 }
 
 func ResolveEmbedEndpoint(cfg *Config, flagOverride string) string {
@@ -119,7 +119,51 @@ func ResolveEmbedEndpoint(cfg *Config, flagOverride string) string {
 	if cfg != nil {
 		return cfg.Services.EmbedEndpoint
 	}
-	return "http://embed-service:8001/embed"
+	return "http://embed-service:8001/v1/embeddings"
+}
+
+// ResolveSTTAPI returns the request format for stt_endpoint: "openai" (the
+// default) or "raggo".
+func ResolveSTTAPI(cfg *Config, flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	if cfg != nil && cfg.Services.STTAPI != "" {
+		return cfg.Services.STTAPI
+	}
+	return "openai"
+}
+
+func ResolveSTTModel(cfg *Config, flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	if cfg != nil && cfg.Services.STTModel != "" {
+		return cfg.Services.STTModel
+	}
+	return "whisper-1"
+}
+
+// ResolveEmbedAPI returns the request format for embed_endpoint: "openai"
+// (the default) or "raggo".
+func ResolveEmbedAPI(cfg *Config, flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	if cfg != nil && cfg.Services.EmbedAPI != "" {
+		return cfg.Services.EmbedAPI
+	}
+	return "openai"
+}
+
+func ResolveEmbedModel(cfg *Config, flagOverride string) string {
+	if flagOverride != "" {
+		return flagOverride
+	}
+	if cfg != nil && cfg.Services.EmbedModel != "" {
+		return cfg.Services.EmbedModel
+	}
+	return "text-embedding-3-small"
 }
 
 func ResolveQdrantHost(cfg *Config, flagOverride string) string {

@@ -136,8 +136,8 @@ qdrant:
   metadata_collection: raggo_metadata
 
 services:
-  stt_endpoint: http://stt-service:8000/transcribe
-  embed_endpoint: http://embed-service:8001/embed
+  stt_endpoint: http://stt-service:8000/v1/audio/transcriptions
+  embed_endpoint: http://embed-service:8001/v1/embeddings
 
 orchestrator:
   retry_limit: 3                    # Maximum retry attempts per corpus
@@ -262,10 +262,10 @@ docker compose exec raggo ls -la /mnt/documents
 **Missing external services:**
 ```bash
 # Test STT endpoint
-curl -X POST http://stt-service:8000/transcribe -d '{"audio_path": "test.mp3"}'
+curl -X POST http://stt-service:8000/v1/audio/transcriptions -F file=@test.mp3 -F model=whisper-1 -F response_format=verbose_json
 
 # Test embed endpoint  
-curl -X POST http://embed-service:8001/embed -d '{"text": "test", "model": "test"}'
+curl -X POST http://embed-service:8001/v1/embeddings -H 'Content-Type: application/json' -d '{"input": "test", "model": "test"}'
 ```
 
 **Query indexed data:**
@@ -361,6 +361,8 @@ curl -X POST http://localhost:6333/collections/tech-podcast/points/scroll \
 
 ### STT Service Request/Response
 
+This is the `raggo` format, used when `services.stt_api: raggo`.
+
 **Expected Request:**
 ```json
 POST /stt
@@ -385,7 +387,11 @@ POST /stt
 }
 ```
 
+With `services.stt_api: openai` (the default), raggo instead uploads the audio as multipart form data (`file`, `model`, `response_format=verbose_json`) to an OpenAI-compatible `/v1/audio/transcriptions` endpoint and reads `segments[].start/end/text` from the response.
+
 ### Embedding Service Request/Response
+
+This is the `raggo` format, used when `services.embed_api: raggo`.
 
 **Expected Request:**
 ```json
@@ -404,6 +410,8 @@ POST /embed
   "version": "v1"
 }
 ```
+
+With `services.embed_api: openai` (the default), raggo instead POSTs `{"input", "model"}` to an OpenAI-compatible `/v1/embeddings` endpoint (llama-server, llama-swap) and reads `data[0].embedding`.
 
 ## Troubleshooting Common Issues
 

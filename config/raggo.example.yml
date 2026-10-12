@@ -30,13 +30,25 @@ services:
   # leaving them unset and using RAGGO_<SERVICE>_API_KEY env vars instead;
   # docker-compose.orchestrator.yml loads them from .env (see .env.example).
 
-  # Speech-to-text service for podcast transcription
-  stt_endpoint: http://stt-service:8000/transcribe
+  # Speech-to-text service for podcast transcription.
+  # stt_api picks the request format:
+  #   openai (default) uploads the file to /v1/audio/transcriptions (whisper.cpp
+  #          server, llama-swap) and needs response_format=verbose_json for timestamps
+  #   raggo  POSTs {"audio_path"}; the service must see the same filesystem
+  stt_endpoint: http://stt-service:8000/v1/audio/transcriptions
+  stt_api: openai
   stt_model: whisper-1                # STT model name (optional)
   stt_version: v1                     # STT model version (optional)
   
-  # Embedding service for vector generation
-  embed_endpoint: http://embed-service:8001/embed
+  # Embedding service for vector generation.
+  # embed_api picks the request format:
+  #   openai (default) POSTs {"input","model"} to /v1/embeddings (llama-server, llama-swap)
+  #   raggo  POSTs {"text","model"} and expects {"embedding":[...]}
+  # e.g. embed_endpoint: http://llama-swap:8080/v1/embeddings
+  #      embed_model: embed-qwen3-0.6b
+  # The query side must embed with the same model (see examples/open-webui).
+  embed_endpoint: http://embed-service:8001/v1/embeddings
+  embed_api: openai
   embed_model: text-embedding-3-small # Embedding model name (optional)
   embed_version: v1                   # Embedding model version (optional)
   
