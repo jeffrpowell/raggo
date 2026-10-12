@@ -19,7 +19,8 @@
 				"golang.go",
 				"ms-azuretools.vscode-docker",
 				"eamodio.gitlens",
-				"tamasfe.even-better-toml"
+				"tamasfe.even-better-toml",
+				"anthropic.claude-code"
 			],
 			"settings": {
 				"go.toolsManagement.checkForUpdates": "local",
@@ -55,12 +56,15 @@
 			"onAutoForward": "notify"
 		}
 	},
-	"postCreateCommand": "go mod download && ./scripts/build.sh bin",
+	"postCreateCommand": "bash .devcontainer/post-create.sh",
 	"containerEnv": {
-		"CGO_ENABLED": "1"
+		"CGO_ENABLED": "1",
+		"CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
+		"NODE_EXTRA_CA_CERTS": "/usr/local/share/ca-certificates/CWA-ROOT-CA1.crt"
 	},
 	"remoteUser": "vscode",
 	"mounts": [
-		"source=${localWorkspaceFolder}/data,target=${containerWorkspaceFolder}/data,type=bind,consistency=cached"
+		"source=claude-code-history,target=/home/vscode/.claude,type=volume",
+		"source=/usr/local/share/ca-certificates/CWA-ROOT-CA1.crt,target=/usr/local/share/ca-certificates/CWA-ROOT-CA1.crt,type=bind,consistency=cached"
 	]
 }
