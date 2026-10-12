@@ -1,6 +1,6 @@
 services:
   raggo:
-    image: ghcr.io/jeffrpowell/raggo:v1.2.0
+    image: ghcr.io/jeffrpowell/raggo:v1.3.0
     restart: unless-stopped
     depends_on:
       - qdrant
