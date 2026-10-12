@@ -31,7 +31,7 @@ func main() {
 	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&episodeID, "episode-id", "", "Episode ID")
 	flag.StringVar(&audioPath, "audio-path", "", "Path to audio file")
-	flag.StringVar(&transcriptDir, "transcript-dir", "data/transcripts", "Directory for transcripts")
+	flag.StringVar(&transcriptDir, "transcript-dir", "", "Directory for transcripts (default: from config)")
 	flag.StringVar(&sttEndpoint, "stt-endpoint", "", "STT service HTTP endpoint (optional)")
 	flag.StringVar(&sttAPI, "stt-api", "", "STT request format: openai or raggo (default openai)")
 	flag.StringVar(&model, "model", "", "STT model name (default whisper-1)")

@@ -45,7 +45,7 @@ func main() {
 	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&ecfg.documentID, "document-id", "", "Document ID")
 	flag.StringVar(&ecfg.filePath, "file-path", "", "Path to document file")
-	flag.StringVar(&ecfg.textDir, "text-dir", "data/documents/text", "Directory for extracted text")
+	flag.StringVar(&ecfg.textDir, "text-dir", "", "Directory for extracted text (default: from config)")
 	flag.StringVar(&ecfg.tikaEndpoint, "tika-endpoint", "", "Tika HTTP endpoint (default from config, else http://localhost:9998)")
 	flag.StringVar(&ecfg.visionEndpoint, "vision-endpoint", "", "OpenAI-compatible vision API endpoint")
 	flag.StringVar(&ecfg.visionModel, "vision-model", "gpt-4o", "Vision model name")

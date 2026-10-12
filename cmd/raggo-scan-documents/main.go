@@ -44,7 +44,7 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
 	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&rootPath, "root-path", "", "Root path to scan recursively")
-	flag.StringVar(&manifestDir, "manifest-dir", "data/manifests", "Directory for manifest files")
+	flag.StringVar(&manifestDir, "manifest-dir", "", "Directory for manifest files (default: from config)")
 	flag.Parse()
 
 	log := logging.New("raggo-scan-documents")

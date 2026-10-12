@@ -28,8 +28,8 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
 	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&feedURL, "feed-url", "", "RSS feed URL")
-	flag.StringVar(&rawDir, "raw-dir", "data/raw", "Directory for raw feed files")
-	flag.StringVar(&manifestDir, "manifest-dir", "data/manifests", "Directory for manifest files")
+	flag.StringVar(&rawDir, "raw-dir", "", "Directory for raw feed files (default: from config)")
+	flag.StringVar(&manifestDir, "manifest-dir", "", "Directory for manifest files (default: from config)")
 	flag.Parse()
 
 	log := logging.New("raggo-rss-podcast")

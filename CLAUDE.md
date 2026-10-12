@@ -14,6 +14,7 @@ A containerized RAG ingestion pipeline written in Go. Podcast RSS feeds and docu
 
 - Artifact-first: each stage reads files and writes files under `storage.*` dirs (`<stage>/<id>.jsonl`). A stage skips work when its output exists (`storage.MarkerExists`), so deleting an artifact is how you force a rerun.
 - Flags win over config. Every dir and endpoint goes through a `config.Resolve*` helper in `pkg/config/paths.go` (flag → config → hardcoded default). New settings follow the same pattern.
+- Flags passed into a `config.Resolve*` helper must default to their zero value (`""` / `0`). Any non-zero default counts as an explicit override, so the config value would be silently ignored.
 - The orchestrator runs stages in order for the **whole corpus**: stage N finishes for every item before stage N+1 starts. Binaries that require `-document-id` / `-episode-id` get it through `Stage.Items` + `ItemFlag`. The executor runs them once per `Item`, appending `ItemFlag <id>` plus `Item.Args`.
 - Item sources live in `pkg/pipeline/items.go`. Each one lists the *upstream* stage's outputs and is evaluated when the stage starts:
   - extract: scan manifests `<text>/*.jsonl`, which also supply `-file-path`

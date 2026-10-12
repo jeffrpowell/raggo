@@ -30,7 +30,7 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
 	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&manifestPath, "manifest", "", "Path to episode manifest JSONL file")
-	flag.StringVar(&audioDir, "audio-dir", "data/audio", "Directory for audio files")
+	flag.StringVar(&audioDir, "audio-dir", "", "Directory for audio files (default: from config)")
 	flag.IntVar(&workers, "workers", 4, "Number of concurrent downloads")
 	flag.Parse()
 

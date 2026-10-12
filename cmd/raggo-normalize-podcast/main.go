@@ -31,7 +31,7 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "Path to raggo.yml config file")
 	flag.StringVar(&corpusID, "corpus-id", "", "Corpus ID from config")
 	flag.StringVar(&episodeID, "episode-id", "", "Episode ID")
-	flag.StringVar(&transcriptDir, "transcript-dir", "data/transcripts", "Directory for transcripts")
+	flag.StringVar(&transcriptDir, "transcript-dir", "", "Directory for transcripts (default: from config)")
 	flag.Parse()
 
 	log := logging.New("raggo-normalize-podcast")
