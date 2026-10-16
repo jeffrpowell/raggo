@@ -129,6 +129,7 @@ func BuildDocumentPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipe
 					return false, nil
 				},
 			},
+			describeStage(corpus),
 		},
 	}
 }

@@ -71,7 +71,8 @@ raggo/
 │   ├── raggo-chunk-text/         # Generic text chunking
 │   ├── raggo-contextualize-text/ # LLM chunk context for document chunks
 │   ├── raggo-embed-text/         # Generic text embedding
-│   └── raggo-index-documents/    # Document Qdrant indexing
+│   ├── raggo-index-documents/    # Document Qdrant indexing
+│   └── raggo-describe-collection/ # Corpus description -> Qdrant collection metadata
 │
 ├── pkg/                          # Shared libraries
 │   ├── config/                   # Configuration loading and validation
@@ -149,8 +150,9 @@ The podcast pipeline follows a linear sequence of transformations:
 6. **Contextualization** (external LLM, optional) → Produces: `contexts/*.jsonl`, `contexts/*.synopsis.json`
 7. **Embedding** (external service) → Produces: `embeddings/*.jsonl`
 8. **Indexing** → Produces: `index/*.done` markers, upserts to Qdrant
+9. **Describe** (optional) → Writes the corpus `description` into the collection's Qdrant metadata. It runs once per pipeline run and has no artifact, so an edited description applies without re-indexing.
 
-The document pipeline follows the same shape: scan → extract → chunk → contextualize → embed → index.
+The document pipeline follows the same shape: scan → extract → chunk → contextualize → embed → index → describe.
 
 Each stage only knows about its input and output file locations. Dependencies are managed by the orchestrator, which executes stages sequentially with automatic retry on failure.
 

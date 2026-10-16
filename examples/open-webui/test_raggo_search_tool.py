@@ -75,6 +75,48 @@ def test_search_without_reranker_uses_fusion_order_and_raggo_embed_api():
     assert results[0]["source"] == "podcast e1 @ 0:02:00-0:03:00"
 
 
+def test_search_sends_bearer_keys_only_when_set():
+    auth = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        auth[path] = request.headers.get("authorization")
+        if path == "/v1/embeddings":
+            return httpx.Response(200, json={"data": [{"embedding": [0.0]}]})
+        if path == "/v1/rerank":
+            return httpx.Response(200, json={"results": [{"index": 0, "relevance_score": 0.5}]})
+        return httpx.Response(200, json={"result": {"points": [point("a", 0.9, document_id="d1", text="alpha")]}})
+
+    tools = make_tools(handler, collections="docs", embed_endpoint="http://m/v1/embeddings",
+                       reranker_endpoint="http://m/v1/rerank", embed_api_key="ek", reranker_api_key="rk")
+    asyncio.run(tools._search("q"))
+
+    assert auth["/v1/embeddings"] == "Bearer ek"
+    assert auth["/v1/rerank"] == "Bearer rk"
+    assert auth["/collections/docs/points/query"] is None
+
+
+def test_list_collections_reads_description_metadata():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, request.headers.get("api-key")))
+        if request.url.path == "/collections/rules":
+            return httpx.Response(200, json={"result": {"points_count": 42, "config": {
+                "params": {}, "metadata": {"description": "Avatar Legends TTRPG rules"}}}})
+        if request.url.path == "/collections/notes":
+            return httpx.Response(200, json={"result": {"points_count": 3, "config": {"params": {}}}})
+        return httpx.Response(404, json={"status": {"error": "Not found"}})
+
+    tools = make_tools(handler, qdrant_url="http://q:6333", qdrant_api_key="qk", collections="rules, notes,missing")
+    out = json.loads(asyncio.run(tools.list_collections()))
+
+    assert seen[0] == ("GET", "/collections/rules", "qk")
+    assert out[0] == {"collection": "rules", "description": "Avatar Legends TTRPG rules", "points": 42}
+    assert out[1] == {"collection": "notes", "description": "", "points": 3}
+    assert out[2]["collection"] == "missing" and "error" in out[2]
+
+
 def test_neighbors_filters_by_source_and_range():
     seen = {}
 

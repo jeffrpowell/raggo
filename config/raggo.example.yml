@@ -124,6 +124,10 @@ corpora:
       root_path: /mnt/documents
       collection: company-docs
       corpus: company-docs-v1
+      # Optional: stored in the collection's Qdrant metadata by the describe
+      # stage. Search tools show it to the model so it can pick a collection.
+      # Corpora sharing a collection overwrite each other's description.
+      description: Internal company docs (policies, runbooks, architecture notes)
       # Optional: Override default chunking parameters
       chunk_size: 1000
       overlap_size: 100

@@ -42,4 +42,4 @@ Then add `SKILL.md` as a skill in Computer (Skills settings). It follows Open We
 
 ## Going further
 
-Computer also supports MCP tool servers (`pip install 'cptr[mcp]'`). If you want structured tool calls instead of shell commands, `Tools` in `raggo_search_tool.py` can be wrapped in a small MCP server with the same two functions. These examples don't include one.
+Computer also supports MCP tool servers (`pip install 'cptr[mcp]'`). If you want structured tool calls instead of shell commands, `Tools` in `raggo_search_tool.py` can be wrapped in a small MCP server with the same three functions. These examples don't include one.

@@ -4,6 +4,7 @@
 Every Valve can be set with an environment variable named RAGGO_<VALVE>, e.g.
 RAGGO_QDRANT_URL, RAGGO_COLLECTIONS, RAGGO_EMBED_ENDPOINT, RAGGO_RERANKER_ENDPOINT.
 
+  raggo_search.py collections
   raggo_search.py search "how do we rotate the signing keys?"
   raggo_search.py search "key rotation" --collection company-docs --json
   raggo_search.py neighbors company-docs <source_id> <chunk_index> --radius 2
@@ -48,6 +49,9 @@ async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
 
+    c = sub.add_parser("collections", help="List collections and their descriptions")
+    c.add_argument("--json", action="store_true")
+
     s = sub.add_parser("search", help="Hybrid search + rerank")
     s.add_argument("query")
     s.add_argument("--collection", help="Search only this collection")
@@ -65,6 +69,15 @@ async def main() -> int:
     tools = load_tools()
 
     try:
+        if args.command == "collections":
+            collections = await tools._collections()
+            if args.json:
+                print(json.dumps(collections, indent=2, ensure_ascii=False))
+            else:
+                for c in collections:
+                    detail = c.get("error") or f"{c['description'] or '(no description)'}  [{c['points']} chunks]"
+                    print(f"{c['collection']}: {detail}")
+            return 0
         if args.command == "search":
             if args.top_k:
                 tools.valves.top_k = args.top_k

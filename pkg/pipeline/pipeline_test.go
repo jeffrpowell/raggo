@@ -69,6 +69,40 @@ func TestContextBudgetOverridePassed(t *testing.T) {
 	}
 }
 
+func TestDescribeStageRunsLastAndOnlyWithDescription(t *testing.T) {
+	cfg := &config.Config{}
+	for _, tc := range []struct {
+		cfg  map[string]interface{}
+		skip bool
+	}{
+		{map[string]interface{}{"collection": "col"}, true},
+		{map[string]interface{}{"collection": "col", "description": ""}, true},
+		{map[string]interface{}{"collection": "col", "description": "Avatar Legends rules"}, false},
+	} {
+		corpus := config.CorpusConfig{ID: "c", Config: tc.cfg}
+		for name, p := range map[string]*Pipeline{
+			"documents": BuildDocumentPipeline(cfg, corpus),
+			"podcast":   BuildPodcastPipeline(cfg, corpus),
+		} {
+			s := p.Stages[len(p.Stages)-1]
+			if s.Name != "describe" || s.Items != nil {
+				t.Fatalf("%s: last stage must be describe without items, got %v", name, stageNames(p))
+			}
+			skip, err := s.CheckSkip(nil)
+			if err != nil || skip != tc.skip {
+				t.Errorf("%s %v: skip=%v err=%v, want skip=%v", name, tc.cfg, skip, err, tc.skip)
+			}
+			if tc.skip {
+				continue
+			}
+			args := s.BuildArgs(nil)
+			if c, d := slices.Index(args, "-collection"), slices.Index(args, "-description"); c < 0 || args[c+1] != "col" || d < 0 || args[d+1] != "Avatar Legends rules" {
+				t.Errorf("%s: unexpected args %v", name, args)
+			}
+		}
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

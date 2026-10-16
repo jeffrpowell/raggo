@@ -3,7 +3,7 @@ title: raggo Search
 author: raggo
 description: Hybrid (dense + BM25) search with RRF fusion and reranking over raggo's Qdrant collections, following Anthropic's Contextual Retrieval recipe.
 requirements: httpx, pydantic
-version: 0.1.0
+version: 0.2.0
 licence: MIT
 """
 
@@ -39,6 +39,7 @@ class Tools:
             description="'openai' for /v1/embeddings, or 'raggo' for raggo's {text, model} -> {embedding} contract",
         )
         embed_model: str = Field("embed-qwen3-0.6b", description="Embedding model name")
+        embed_api_key: str = Field("", description="Bearer token for the embedding endpoint (optional)")
         query_instruction: str = Field(
             "Instruct: Given a question, retrieve passages that answer it\nQuery: ",
             description="Prefix for queries only (Qwen3-Embedding expects one; documents are embedded without it)",
@@ -48,6 +49,7 @@ class Tools:
             description="llama-server /v1/rerank endpoint (empty disables reranking)",
         )
         reranker_model: str = Field("qwen3-reranker-0.6b", description="Reranker model name")
+        reranker_api_key: str = Field("", description="Bearer token for the reranker endpoint (optional)")
         prefetch_k: int = Field(20, description="Candidates fetched per retriever before fusion")
         top_k: int = Field(5, description="Results returned after reranking")
         timeout_seconds: float = Field(60.0, description="HTTP timeout")
@@ -63,12 +65,13 @@ class Tools:
         __event_emitter__: Optional[Callable[[dict], Awaitable[None]]] = None,
     ) -> str:
         """
-        Search the raggo knowledge base (documents and podcast transcripts) using hybrid
-        keyword + semantic search with reranking. Call this before answering questions
-        about the user's documents or podcasts. If results are weak, rephrase the query
-        using vocabulary from the returned context passages and search again.
+        Search the user's private knowledge base: their own documents, books, rules, notes
+        and podcast transcripts, which you have not seen. Call this whenever a question might
+        be answered by the user's own material, even if they don't mention a knowledge base.
+        Uses hybrid keyword + semantic search with reranking. If results are weak, rephrase
+        the query using vocabulary from the returned context passages and search again.
         :param query: A natural-language question or keyword query.
-        :param collection: Optional single collection name to search instead of all configured collections.
+        :param collection: Optional collection name from list_collections. Pass it when the question clearly belongs to one collection; omit it to search all collections.
         :return: JSON list of results with source, score, context, text, collection, source_id and chunk_index.
         """
         await self._status(__event_emitter__, f"Searching raggo for: {query}", False)
@@ -92,6 +95,15 @@ class Tools:
                 )
         await self._status(__event_emitter__, f"Found {len(results)} passages", True)
         return json.dumps(results, ensure_ascii=False)
+
+    async def list_collections(self) -> str:
+        """
+        List the collections in the user's knowledge base with a description of what each
+        one contains. Call this when you're unsure which collection covers the user's
+        question, then pass the matching name as the collection for search_knowledge.
+        :return: JSON list of collections with collection, description and points (chunk count).
+        """
+        return json.dumps(await self._collections(), ensure_ascii=False)
 
     async def get_neighbors(
         self,
@@ -128,9 +140,35 @@ class Tools:
             return {"api-key": self.valves.qdrant_api_key}
         return {}
 
+    @staticmethod
+    def _bearer(key: str) -> dict:
+        return {"Authorization": f"Bearer {key}"} if key else {}
+
+    def _collection_names(self) -> list:
+        return [c.strip() for c in self.valves.collections.split(",") if c.strip()]
+
+    async def _collections(self) -> list:
+        out = []
+        async with self._client() as client:
+            for name in self._collection_names():
+                try:
+                    resp = await client.get(f"{self.valves.qdrant_url}/collections/{name}", headers=self._qdrant_headers())
+                    resp.raise_for_status()
+                except httpx.HTTPError as e:
+                    out.append({"collection": name, "error": f"lookup failed: {e}"})
+                    continue
+                info = resp.json()["result"]
+                metadata = (info.get("config") or {}).get("metadata") or {}
+                out.append({
+                    "collection": name,
+                    "description": metadata.get("description", ""),
+                    "points": info.get("points_count"),
+                })
+        return out
+
     async def _search(self, query: str, collection: Optional[str] = None) -> list:
         v = self.valves
-        names = [collection] if collection else [c.strip() for c in v.collections.split(",") if c.strip()]
+        names = [collection] if collection else self._collection_names()
 
         async with self._client() as client:
             vector = await self._embed(client, query)
@@ -145,11 +183,12 @@ class Tools:
     async def _embed(self, client: httpx.AsyncClient, query: str) -> list:
         v = self.valves
         text = v.query_instruction + query
+        headers = self._bearer(v.embed_api_key)
         if v.embed_api == "raggo":
-            resp = await client.post(v.embed_endpoint, json={"text": text, "model": v.embed_model})
+            resp = await client.post(v.embed_endpoint, json={"text": text, "model": v.embed_model}, headers=headers)
             resp.raise_for_status()
             return resp.json()["embedding"]
-        resp = await client.post(v.embed_endpoint, json={"input": text, "model": v.embed_model})
+        resp = await client.post(v.embed_endpoint, json={"input": text, "model": v.embed_model}, headers=headers)
         resp.raise_for_status()
         return resp.json()["data"][0]["embedding"]
 
@@ -181,6 +220,7 @@ class Tools:
         resp = await client.post(
             v.reranker_endpoint,
             json={"model": v.reranker_model, "query": query, "documents": documents, "top_n": len(documents)},
+            headers=self._bearer(v.reranker_api_key),
         )
         resp.raise_for_status()
         ranked = []

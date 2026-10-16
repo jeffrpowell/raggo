@@ -159,6 +159,7 @@ func BuildPodcastPipeline(cfg *config.Config, corpus config.CorpusConfig) *Pipel
 					return false, nil
 				},
 			},
+			describeStage(corpus),
 		},
 	}
 }

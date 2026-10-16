@@ -1,7 +1,7 @@
 ---
 name: raggo-search
-description: Search indexed documents and podcasts with reranking.
-version: 0.1.0
+description: Search the user's own indexed documents, books, rules and podcasts with reranking.
+version: 0.2.0
 ---
 
 # raggo Search
@@ -12,6 +12,7 @@ Answers questions from the user's raggo knowledge base: documents and podcast tr
 
 - "What do my docs say about …", "find where we decided …", "search my notes/podcasts for …"
 - Any question whose answer is likely in the user's own documents or podcast episodes rather than on the public web
+- Questions about a topic one of the collections covers (run `collections` to see them), even when the user doesn't mention raggo or their docs
 - Follow-ups that need more of a document the user has already been shown
 
 ## Prerequisites
@@ -23,20 +24,23 @@ Answers questions from the user's raggo knowledge base: documents and podcast tr
   - `RAGGO_COLLECTIONS`, comma-separated (default `company-docs`)
   - `RAGGO_EMBED_ENDPOINT`, `RAGGO_EMBED_MODEL`, `RAGGO_EMBED_API` (`openai` or `raggo`)
   - `RAGGO_RERANKER_ENDPOINT`, `RAGGO_RERANKER_MODEL` (set the endpoint to an empty string to skip reranking)
+  - `RAGGO_EMBED_API_KEY`, `RAGGO_RERANKER_API_KEY`, `RAGGO_QDRANT_API_KEY` if those services require a key
 
 ## How to Run
 
 Run every command through `run_command`. Searching is iterative. Treat the first query as a probe, then refine it.
 
-1. Break the user's question into one to three focused sub-queries.
-2. Search each one. Read both the `context` line (what the chunk is about within its source) and the chunk text.
-3. If a hit looks relevant but cuts off mid-thought, fetch its neighbors.
-4. If the results are weak, rewrite the query using terms from the `context` lines of the best hits (names, product terms, dates) and search again. Stop after three rounds with nothing new.
-5. Answer only from the retrieved text and cite each claim with its `source` label.
+1. Run `collections` once per session to learn what each collection holds.
+2. Break the user's question into one to three focused sub-queries. If the question clearly belongs to one collection, pass `--collection`. Otherwise search them all.
+3. Search each one. Read both the `context` line (what the chunk is about within its source) and the chunk text.
+4. If a hit looks relevant but cuts off mid-thought, fetch its neighbors.
+5. If the results are weak, rewrite the query using terms from the `context` lines of the best hits (names, product terms, dates) and search again. Stop after three rounds with nothing new.
+6. Answer only from the retrieved text and cite each claim with its `source` label.
 
 ## Quick Reference
 
-- `python3 $RAGGO_EXAMPLES/open-webui-computer/raggo_search.py search "<query>"`: top reranked passages
+- `python3 $RAGGO_EXAMPLES/open-webui-computer/raggo_search.py collections`: collection names, descriptions and chunk counts
+- `python3 $RAGGO_EXAMPLES/open-webui-computer/raggo_search.py search "<query>"`: top reranked passages across all collections
 - `... search "<query>" --collection <name>`: search a single collection
 - `... search "<query>" --top-k 10 --json`: more results, machine-readable
 - `... neighbors <collection> <source_id> <chunk_index> --radius 2`: surrounding chunks, in order
